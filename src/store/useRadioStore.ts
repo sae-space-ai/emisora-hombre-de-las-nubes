@@ -14,6 +14,8 @@ import { savePlayedIds, loadPlayedIds } from '../lib/persistence';
 
 export type RadioStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'tts' | 'error';
 
+import { Advertiser } from '../lib/ads';
+
 interface RadioState {
   // Catálogo
   catalog: AudiusTrack[];
@@ -49,6 +51,11 @@ interface RadioState {
   ttsPlayedCount: number;
   errorCount: number;
 
+  // Sistema de publicidad
+  currentAd: Advertiser | null;
+  isPlayingAd: boolean;
+  adsEnabled: boolean;
+
   // Errores
   error: string | null;
 
@@ -81,6 +88,11 @@ interface RadioState {
   markTrackPlayed: (trackId: string) => void;
   incrementTTSCount: () => void;
   incrementErrorCount: () => void;
+
+  // Acciones - Publicidad
+  setCurrentAd: (ad: Advertiser | null) => void;
+  setIsPlayingAd: (playing: boolean) => void;
+  setAdsEnabled: (enabled: boolean) => void;
 }
 
 export const useRadioStore = create<RadioState>((set, get) => ({
@@ -105,6 +117,9 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   tracksPlayedCount: 0,
   ttsPlayedCount: 0,
   errorCount: 0,
+  currentAd: null,
+  isPlayingAd: false,
+  adsEnabled: true,
   error: null,
 
   // === ACCIONES ===
@@ -276,4 +291,9 @@ export const useRadioStore = create<RadioState>((set, get) => ({
     const { errorCount } = get();
     set({ errorCount: errorCount + 1 });
   },
+
+  // Publicidad
+  setCurrentAd: (ad) => set({ currentAd: ad }),
+  setIsPlayingAd: (playing) => set({ isPlayingAd: playing }),
+  setAdsEnabled: (enabled) => set({ adsEnabled: enabled }),
 }));

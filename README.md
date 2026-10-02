@@ -100,6 +100,37 @@ Plataforma web que ingesta, cataloga, programa y reproduce de forma **ininterrum
 | **Sábado** | Opera L'Ombra della Musica + PAN — EL MUSICAL |
 | **Domingo** | Fandangos, Alegrías, Siguiriyas... + Selección aleatoria |
 
+## 📢 Sistema de Publicidad Local
+
+La emisora incluye un sistema de publicidad dinámica que inserta anuncios de **15 empresas reales de Almendralejo** cada 30 segundos de reproducción musical.
+
+### Características
+- ✅ **15 anunciantes locales** (moda, salud, alimentación, servicios, deporte)
+- ✅ **Rotación inteligente** sin repeticiones consecutivas
+- ✅ **Audio ducking** automático (baja volumen música durante anuncio)
+- ✅ **TTS en español** para locuciones naturales
+- ✅ **Visualización atractiva** con info completa del anunciante
+- ✅ **Toggle on/off** desde la interfaz
+
+### Anunciantes Incluidos
+- Chambra Moda Hombre (desde 1989)
+- Clínica Dental Sara Moreno
+- Clínica Dental Barrau
+- Farmacia Alcántara
+- El Zamorano Centro Comercial (desde 1909)
+- Bodegas Peña de Hita
+- Librería San Francisco
+- Mármoles Asuar (desde 1946)
+- Limpia Car
+- Lourdes Amaya Estética
+- Cash Extremeño
+- Buenaval
+- Aceitunas Barroso e Hijos
+- Mansele Climatización
+- Pádel Indoor 15/30
+
+👉 [Ver documentación completa de publicidad](ADVERTISING.md)
+
 ## 🔐 Configuración de Credenciales
 
 ### 1. Variables de Entorno Locales

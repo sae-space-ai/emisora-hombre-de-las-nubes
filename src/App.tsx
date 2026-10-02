@@ -27,11 +27,13 @@ import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
+import { shouldPlayAd, startAd, onAdStart, onAdEnd, setAdsEnabled } from './lib/ads';
 import StationHeader from './components/StationHeader';
 import NowPlaying from './components/NowPlaying';
 import RadioPlayer from './components/RadioPlayer';
 import ScheduleDisplay from './components/ScheduleDisplay';
 import PlaylistQueue from './components/PlaylistQueue';
+import AdDisplay from './components/AdDisplay';
 
 // ============================================================================
 // TIMEOUT DE SEGURIDAD (FASE 4.3): 10 segundos
@@ -45,6 +47,7 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [lastBlockName, setLastBlockName] = useState('');
+  const [showAd, setShowAd] = useState(false);
 
   // Store
   const store = useRadioStore();
@@ -76,6 +79,57 @@ function App() {
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { catalogRef.current = catalog; }, [catalog]);
   useEffect(() => { albumsRef.current = albums; }, [albums]);
+
+  // ========================================================================
+  // SISTEMA DE PUBLICIDAD: Verificar cada segundo si es momento de anuncio
+  // ========================================================================
+  useEffect(() => {
+    // Registrar callbacks de publicidad
+    onAdStart((ad) => {
+      logSystem(`📢 Anuncio iniciado: ${ad.name}`);
+      store.setCurrentAd(ad);
+      store.setIsPlayingAd(true);
+      setShowAd(true);
+    });
+
+    onAdEnd(() => {
+      logSystem('📢 Anuncio finalizado');
+      store.setCurrentAd(null);
+      store.setIsPlayingAd(false);
+      setShowAd(false);
+      
+      // Continuar con la reproducción musical
+      if (currentTrack && audioRef.current) {
+        audioRef.current.play().catch(err => {
+          logError('Error reanudando música después del anuncio', err);
+        });
+        store.setIsPlaying(true);
+      }
+    });
+
+    // Timer que verifica cada segundo si es momento de reproducir un anuncio
+    const adCheckInterval = setInterval(() => {
+      // Solo verificar si está reproduciendo música y no está en TTS o anuncio
+      if (store.isPlaying && !store.isTTSPlaying && !store.isPlayingAd && store.adsEnabled) {
+        if (shouldPlayAd()) {
+          logSystem('⏰ Momento de reproducir anuncio');
+          
+          // Pausar música
+          if (audioRef.current) {
+            audioRef.current.pause();
+            store.setIsPlaying(false);
+          }
+
+          // Iniciar anuncio
+          startAd(audioRef.current!, () => {
+            // El callback onAdEnd se encargará de continuar
+          });
+        }
+      }
+    }, 1000);
+
+    return () => clearInterval(adCheckInterval);
+  }, [store.isPlaying, store.isTTSPlaying, store.isPlayingAd, store.adsEnabled]);
 
   // ========================================================================
   // FASE 2: CARGA DEL CATÁLOGO
@@ -409,6 +463,9 @@ function App() {
         }}
       />
 
+      {/* Visualización de anuncios publicitarios */}
+      <AdDisplay advertiser={store.currentAd} isVisible={showAd} />
+
       <div className="relative z-10 max-w-6xl mx-auto">
         <StationHeader />
 
@@ -481,6 +538,26 @@ function App() {
                   </div>
                 </label>
 
+                <label className="flex items-center justify-between cursor-pointer group">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📢</span>
+                    <span className="text-xs text-white/60 group-hover:text-white/80 transition-colors">Publicidad local</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      checked={store.adsEnabled}
+                      onChange={(e) => {
+                        store.setAdsEnabled(e.target.checked);
+                        setAdsEnabled(e.target.checked);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-white/10 rounded-full peer peer-checked:bg-amber-500/50 transition-colors"></div>
+                    <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white/60 rounded-full peer-checked:translate-x-4 peer-checked:bg-amber-300 transition-all"></div>
+                  </div>
+                </label>
+
                 <div className="pt-2 border-t border-white/5 space-y-1.5">
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Catálogo</span>
@@ -509,6 +586,14 @@ function App() {
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Siguiente</span>
                     <span className="text-white/50">{getNextBlock().icon} {getNextBlock().name}</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-white/30">Anuncios</span>
+                    <span className="text-white/50 font-mono">15 empresas</span>
+                  </div>
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-white/30">Intervalo</span>
+                    <span className="text-white/50 font-mono">30s</span>
                   </div>
                 </div>
               </div>
