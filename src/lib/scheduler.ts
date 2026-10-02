@@ -8,17 +8,19 @@
  */
 
 import { AudiusTrack, Album, TrackCategory, classifyTrack, DAY_NAMES } from './audius';
+import { Advertiser, adScheduler } from './adScheduler';
 
 // ============================================================================
 // TIPOS
 // ============================================================================
 
 /**
- * QueueItem: Puede ser una pista musical o un marcador TTS
+ * QueueItem: Puede ser una pista musical, un marcador TTS o un anuncio publicitario
  */
 export type QueueItem =
   | { type: 'track'; track: AudiusTrack }
-  | { type: 'tts'; message: string; id: string };
+  | { type: 'tts'; message: string; id: string }
+  | { type: 'ad'; advertiser: Advertiser; id: string; position: 'start' | 'middle' | 'end' };
 
 /**
  * Bloque de programación del día
@@ -243,33 +245,79 @@ export function generateQueue(
     matchingTracks = shuffleArray(uniqueTracks);
   }
 
-  // 2. Construir QueueItem[] alternando pistas y TTS cada 3 pistas
-  return buildQueueWithTTS(matchingTracks);
+  // 2. Construir QueueItem[] con anuncios publicitarios intercalados
+  return buildQueueWithAds(matchingTracks);
 }
 
 /**
- * FASE 3.3: Construye la cola intercalando TTS cada 3 pistas
- * Patrón: [Track, Track, Track, TTS, Track, Track, Track, TTS, ...]
+ * FASE 3.3 CORREGIDA: Construye la cola con anuncios publicitarios intercalados
+ * Patrón: [AD_START, Track1, AD_MIDDLE, Track1_continuación, AD_MIDDLE, ..., AD_END, AD_START, Track2, ...]
  */
-function buildQueueWithTTS(tracks: AudiusTrack[]): QueueItem[] {
+function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
   const queue: QueueItem[] = [];
-  let trackCounter = 0;
+  const adInterval = 15; // segundos entre anuncios
+  let adCounter = 0;
 
   for (const track of tracks) {
-    queue.push({ type: 'track', track });
-    trackCounter++;
+    // Anuncio al INICIO de cada pista
+    queue.push({
+      type: 'ad',
+      advertiser: getNextAdvertiser(),
+      id: `ad-start-${Date.now()}-${adCounter++}`,
+      position: 'start',
+    });
 
-    // Insertar TTS cada 3 pistas
-    if (trackCounter % 3 === 0 && trackCounter < tracks.length) {
+    // Pista musical
+    queue.push({ type: 'track', track });
+
+    // Anuncios cada 15 segundos DURANTE la pista (simulado)
+    const trackDuration = track.duration || 180; // default 3 min
+    const adsDuringTrack = Math.floor(trackDuration / adInterval) - 1; // -1 porque ya pusimos uno al inicio
+    
+    for (let i = 0; i < adsDuringTrack && i < 3; i++) { // máximo 3 anuncios durante la pista
       queue.push({
-        type: 'tts',
-        message: getRandomTTSMessage(),
-        id: `tts-${Date.now()}-${trackCounter}`,
+        type: 'ad',
+        advertiser: getNextAdvertiser(),
+        id: `ad-middle-${Date.now()}-${adCounter++}`,
+        position: 'middle',
       });
     }
+
+    // Anuncio al FINAL de cada pista
+    queue.push({
+      type: 'ad',
+      advertiser: getNextAdvertiser(),
+      id: `ad-end-${Date.now()}-${adCounter++}`,
+      position: 'end',
+    });
   }
 
   return queue;
+}
+
+/**
+ * Obtiene el siguiente anuncio de la rotación
+ */
+function getNextAdvertiser(): Advertiser {
+  const ad = adScheduler.getNextAd();
+  if (!ad) {
+    // Si no hay anunciantes, devolver un anuncio placeholder
+    return {
+      id: 'placeholder',
+      name: 'El Hombre de las Nubes',
+      category: 'Emisora',
+      address: 'Almendralejo',
+      phone: '',
+      website: '',
+      description: 'Radio autónoma 24/7',
+      adScript: 'Estás escuchando El Hombre de las Nubes, la radio digital del Profesor Manuel Gago Fernández.',
+      audioFile: null,
+      ttsVoice: 'es-ES',
+      duration: 10,
+      enabled: true
+    };
+  }
+  return ad;
 }
 
 /**

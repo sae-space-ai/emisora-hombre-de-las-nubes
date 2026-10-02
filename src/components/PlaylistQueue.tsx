@@ -53,6 +53,25 @@ export default function PlaylistQueue({ queue, currentIndex }: PlaylistQueueProp
               );
             }
 
+            if (item.type === 'ad') {
+              const positionLabel = item.position === 'start' ? '🎬' : item.position === 'end' ? '🏁' : '⏱️';
+              return (
+                <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg bg-amber-500/5 border border-amber-500/10">
+                  <span className="text-[10px] text-amber-400/40 w-5 text-right font-mono">{index + 1}</span>
+                  <span className="text-sm">{positionLabel}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-amber-300/60 font-medium truncate">
+                      📢 {item.advertiser.name}
+                    </p>
+                    <p className="text-[9px] text-amber-400/40 truncate">
+                      {item.advertiser.address}
+                    </p>
+                  </div>
+                  <span className="text-[9px] text-amber-400/40 px-1.5 py-0.5 rounded bg-amber-500/10">AD</span>
+                </div>
+              );
+            }
+
             const track = item.track;
             const category = classifyTrack(track);
             const artwork = getTrackArtwork(track);

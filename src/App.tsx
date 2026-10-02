@@ -27,7 +27,6 @@ import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
-import { shouldPlayAd, startAd, onAdStart, onAdEnd, setAdsEnabled } from './lib/ads';
 import StationHeader from './components/StationHeader';
 import NowPlaying from './components/NowPlaying';
 import RadioPlayer from './components/RadioPlayer';
@@ -82,55 +81,9 @@ function App() {
   useEffect(() => { albumsRef.current = albums; }, [albums]);
 
   // ========================================================================
-  // SISTEMA DE PUBLICIDAD: Verificar cada segundo si es momento de anuncio
+  // SISTEMA DE PUBLICIDAD: Los anuncios ahora se manejan como parte de la cola
+  // No necesitamos lógica separada, todo fluye naturalmente en handleAdvance
   // ========================================================================
-  useEffect(() => {
-    // Registrar callbacks de publicidad
-    onAdStart((ad) => {
-      logSystem(`📢 Anuncio iniciado: ${ad.name}`);
-      store.setCurrentAd(ad);
-      store.setIsPlayingAd(true);
-      setShowAd(true);
-    });
-
-    onAdEnd(() => {
-      logSystem('📢 Anuncio finalizado');
-      store.setCurrentAd(null);
-      store.setIsPlayingAd(false);
-      setShowAd(false);
-      
-      // Continuar con la reproducción musical
-      if (currentTrack && audioRef.current) {
-        audioRef.current.play().catch(err => {
-          logError('Error reanudando música después del anuncio', err);
-        });
-        store.setIsPlaying(true);
-      }
-    });
-
-    // Timer que verifica cada segundo si es momento de reproducir un anuncio
-    const adCheckInterval = setInterval(() => {
-      // Solo verificar si está reproduciendo música y no está en TTS o anuncio
-      if (store.isPlaying && !store.isTTSPlaying && !store.isPlayingAd && store.adsEnabled) {
-        if (shouldPlayAd()) {
-          logSystem('⏰ Momento de reproducir anuncio');
-          
-          // Pausar música
-          if (audioRef.current) {
-            audioRef.current.pause();
-            store.setIsPlaying(false);
-          }
-
-          // Iniciar anuncio
-          startAd(audioRef.current!, () => {
-            // El callback onAdEnd se encargará de continuar
-          });
-        }
-      }
-    }, 1000);
-
-    return () => clearInterval(adCheckInterval);
-  }, [store.isPlaying, store.isTTSPlaying, store.isPlayingAd, store.adsEnabled]);
 
   // ========================================================================
   // FASE 2: CARGA DEL CATÁLOGO
@@ -284,6 +237,48 @@ function App() {
         });
       } else {
         // TTS no disponible, saltar
+        setTimeout(() => handleAdvance(), 500);
+      }
+    } else if (nextItem.type === 'ad') {
+      // Siguiente es ANUNCIO PUBLICITARIO
+      console.log('[App] 📢 Reproduciendo anuncio:', nextItem.advertiser.name);
+      store.setCurrentAd(nextItem.advertiser);
+      store.setIsPlayingAd(true);
+
+      // Reproducir anuncio con TTS
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(nextItem.advertiser.adScript);
+        utterance.lang = 'es-ES';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const spanishVoice = voices.find(v => v.lang === 'es-ES');
+        if (spanishVoice) {
+          utterance.voice = spanishVoice;
+        }
+
+        utterance.onend = () => {
+          console.log('[App] ✅ Anuncio terminado');
+          store.setIsPlayingAd(false);
+          store.setCurrentAd(null);
+          // Avanzar al siguiente item
+          handleAdvance();
+        };
+
+        utterance.onerror = (event) => {
+          console.error('[App] ❌ Error en anuncio:', event.error);
+          store.setIsPlayingAd(false);
+          store.setCurrentAd(null);
+          handleAdvance();
+        };
+
+        window.speechSynthesis.speak(utterance);
+      } else {
+        // TTS no disponible, saltar anuncio
         setTimeout(() => handleAdvance(), 500);
       }
     } else if (nextItem.type === 'track') {
@@ -552,7 +547,6 @@ function App() {
                       checked={store.adsEnabled}
                       onChange={(e) => {
                         store.setAdsEnabled(e.target.checked);
-                        setAdsEnabled(e.target.checked);
                       }}
                       className="sr-only peer"
                     />
