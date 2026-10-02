@@ -100,34 +100,46 @@ Plataforma web que ingesta, cataloga, programa y reproduce de forma **ininterrum
 | **Sábado** | Opera L'Ombra della Musica + PAN — EL MUSICAL |
 | **Domingo** | Fandangos, Alegrías, Siguiriyas... + Selección aleatoria |
 
-## 📢 Sistema de Publicidad Local
+## 📢 Sistema de Publicidad Local Dinámico
 
-La emisora incluye un sistema de publicidad dinámica que inserta anuncios de **15 empresas reales de Almendralejo** cada 30 segundos de reproducción musical.
+La emisora incluye un sistema de publicidad avanzada que inserta anuncios de **14 comercios reales de Almendralejo** (categoría Textil, Moda y Accesorios) en tres momentos estratégicos:
 
-### Características
-- ✅ **15 anunciantes locales** (moda, salud, alimentación, servicios, deporte)
+### 🎯 Momentos de Inserción
+1. **Al inicio de cada pista** - Antes de que comience la música
+2. **Cada 15 segundos** - Durante la reproducción de la pista (configurable)
+3. **Al final de cada pista** - Antes de pasar a la siguiente
+
+### ✨ Características Técnicas
+- ✅ **Audio Ducking profesional** con Web Audio API (fade in/out suave de 0.5s)
+- ✅ **14 anunciantes reales** de Almendralejo (Textil, Moda y Accesorios)
 - ✅ **Rotación inteligente** sin repeticiones consecutivas
-- ✅ **Audio ducking** automático (baja volumen música durante anuncio)
 - ✅ **TTS en español** para locuciones naturales
-- ✅ **Visualización atractiva** con info completa del anunciante
-- ✅ **Toggle on/off** desde la interfaz
+- ✅ **Visualización atractiva** con banner animado durante el anuncio
+- ✅ **Panel de administración** para gestionar anunciantes y configuración
+- ✅ **Configuración flexible** (intervalo, ducking, momentos de inserción)
 
-### Anunciantes Incluidos
-- Chambra Moda Hombre (desde 1989)
-- Clínica Dental Sara Moreno
-- Clínica Dental Barrau
-- Farmacia Alcántara
-- El Zamorano Centro Comercial (desde 1909)
-- Bodegas Peña de Hita
-- Librería San Francisco
-- Mármoles Asuar (desde 1946)
-- Limpia Car
-- Lourdes Amaya Estética
-- Cash Extremeño
-- Buenaval
-- Aceitunas Barroso e Hijos
-- Mansele Climatización
-- Pádel Indoor 15/30
+### 🏪 Anunciantes Incluidos (Categoría 99)
+- Almacenes Casa Ángel (desde 1962)
+- Ana Blanca Bote
+- Arias Moda (desde 1924)
+- Bonita Locura
+- Boutique Cachemir
+- Boutique Guillermo Rangel
+- Boutique Zetta (desde 1990)
+- Calzados Emilio Salamanca (desde 1968)
+- Celopman
+- Centro Comercial El Zamorano (desde 1907)
+- Chambra (desde 1989)
+- Colores de Venecia
+- Confecciones Alcalá
+- Decor-Textil
+
+### 🎛️ Panel de Administración
+Accede al panel haciendo clic en el botón de engranaje (⚙️) en la esquina inferior derecha:
+- Activar/desactivar anunciantes individuales
+- Configurar intervalo entre anuncios (10-60 segundos)
+- Habilitar/deshabilitar anuncios al inicio y final de pista
+- Ver estadísticas en tiempo real
 
 👉 [Ver documentación completa de publicidad](ADVERTISING.md)
 

@@ -34,6 +34,7 @@ import RadioPlayer from './components/RadioPlayer';
 import ScheduleDisplay from './components/ScheduleDisplay';
 import PlaylistQueue from './components/PlaylistQueue';
 import AdDisplay from './components/AdDisplay';
+import AdAdminPanel from './components/AdAdminPanel';
 
 // ============================================================================
 // TIMEOUT DE SEGURIDAD (FASE 4.3): 10 segundos
@@ -465,6 +466,9 @@ function App() {
 
       {/* Visualización de anuncios publicitarios */}
       <AdDisplay advertiser={store.currentAd} isVisible={showAd} />
+
+      {/* Panel de administración de publicidad */}
+      <AdAdminPanel />
 
       <div className="relative z-10 max-w-6xl mx-auto">
         <StationHeader />

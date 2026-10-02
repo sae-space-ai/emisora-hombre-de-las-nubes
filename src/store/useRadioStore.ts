@@ -55,6 +55,10 @@ interface RadioState {
   currentAd: Advertiser | null;
   isPlayingAd: boolean;
   adsEnabled: boolean;
+  adQueue: Advertiser[];
+  currentAdIndex: number;
+  nextAdTime: number;
+  adPlayCount: number;
 
   // Errores
   error: string | null;
@@ -93,6 +97,11 @@ interface RadioState {
   setCurrentAd: (ad: Advertiser | null) => void;
   setIsPlayingAd: (playing: boolean) => void;
   setAdsEnabled: (enabled: boolean) => void;
+  setAdQueue: (queue: Advertiser[]) => void;
+  setCurrentAdIndex: (index: number) => void;
+  setNextAdTime: (time: number) => void;
+  incrementAdPlayCount: () => void;
+  resetAdState: () => void;
 }
 
 export const useRadioStore = create<RadioState>((set, get) => ({
@@ -120,6 +129,10 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   currentAd: null,
   isPlayingAd: false,
   adsEnabled: true,
+  adQueue: [],
+  currentAdIndex: 0,
+  nextAdTime: 0,
+  adPlayCount: 0,
   error: null,
 
   // === ACCIONES ===
@@ -296,4 +309,19 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   setCurrentAd: (ad) => set({ currentAd: ad }),
   setIsPlayingAd: (playing) => set({ isPlayingAd: playing }),
   setAdsEnabled: (enabled) => set({ adsEnabled: enabled }),
+  setAdQueue: (queue) => set({ adQueue: queue }),
+  setCurrentAdIndex: (index) => set({ currentAdIndex: index }),
+  setNextAdTime: (time) => set({ nextAdTime: time }),
+  incrementAdPlayCount: () => {
+    const { adPlayCount } = get();
+    set({ adPlayCount: adPlayCount + 1 });
+  },
+  resetAdState: () => set({
+    adQueue: [],
+    currentAdIndex: 0,
+    nextAdTime: 0,
+    adPlayCount: 0,
+    currentAd: null,
+    isPlayingAd: false,
+  }),
 }));
