@@ -100,6 +100,53 @@ Plataforma web que ingesta, cataloga, programa y reproduce de forma **ininterrum
 | **Sábado** | Opera L'Ombra della Musica + PAN — EL MUSICAL |
 | **Domingo** | Fandangos, Alegrías, Siguiriyas... + Selección aleatoria |
 
+## 🔐 Configuración de Credenciales
+
+### 1. Variables de Entorno Locales
+
+Crea un archivo `.env.local` en la raíz del proyecto:
+
+```bash
+# Credenciales de Audius API
+AUDIUS_API_KEY=c687bc369a514c30adcc07ddbc10aeb38fd29f03
+AUDIUS_API_SECRET=25660f07031f5da3f15690cd1342b60ef2f452930bfe50feb51e82f241c6f8e2
+
+# Secreto para el cron job (cámbialo por uno propio)
+CRON_SECRET=cambia-esto-por-un-secreto-seguro
+```
+
+**⚠️ IMPORTANTE:** El archivo `.env.local` está en `.gitignore` y NUNCA debe subirse al repositorio.
+
+### 2. Configuración en Vercel
+
+1. Ve a tu proyecto en [Vercel](https://vercel.com)
+2. Navega a **Settings** > **Environment Variables**
+3. Agrega las siguientes variables:
+   - `AUDIUS_API_KEY` = `c687bc369a514c30adcc07ddbc10aeb38fd29f03`
+   - `AUDIUS_API_SECRET` = `25660f07031f5da3f15690cd1342b60ef2f452930bfe50feb51e82f241c6f8e2`
+   - `CRON_SECRET` = (genera un secreto seguro)
+4. Asegúrate de marcar las variables para **Production**, **Preview** y **Development**
+
+### 3. Configuración en GitHub
+
+1. Ve a tu repositorio en GitHub
+2. Navega a **Settings** > **Secrets and variables** > **Actions**
+3. Agrega los siguientes secretos:
+   - `VERCEL_TOKEN`: Tu token de despliegue de Vercel
+     - Obtén tu token en: Vercel > Settings > Tokens
+   - `VERCEL_ORG_ID`: Tu ID de organización (opcional)
+   - `VERCEL_PROJECT_ID`: Tu ID de proyecto (opcional)
+   - `AUDIUS_API_KEY`: `c687bc369a514c30adcc07ddbc10aeb38fd29f03`
+   - `AUDIUS_API_SECRET`: `25660f07031f5da3f15690cd1342b60ef2f452930bfe50feb51e82f241c6f8e2`
+
+### 4. Obtener Token de Vercel
+
+1. Inicia sesión en [Vercel](https://vercel.com)
+2. Ve a **Settings** > **Tokens**
+3. Haz clic en **Create Token**
+4. Dale un nombre (ej: "GitHub Actions Deploy")
+5. Copia el token y guárdalo como secreto en GitHub
+
 ## 🚀 Instalación y Despliegue
 
 ### Requisitos
@@ -108,29 +155,67 @@ Plataforma web que ingesta, cataloga, programa y reproduce de forma **ininterrum
 
 ### Local
 ```bash
+# Clonar repositorio
 git clone <repo-url>
 cd emisora-hombre-de-las-nubes
+
+# Instalar dependencias
 npm install
+
+# Crear archivo de variables de entorno
+cp .env.local.example .env.local
+# Edita .env.local con tus credenciales
+
+# Iniciar servidor de desarrollo
 npm run dev
 ```
 
-### Build
+La emisora estará disponible en `http://localhost:5173`
+
+### Build para Producción
 ```bash
 npm run build
-# Archivos en dist/
+# Archivos generados en dist/
 ```
 
-### Vercel
+### Despliegue en Vercel (Manual)
 ```bash
+# Instalar Vercel CLI
 npm install -g vercel
+
+# Iniciar sesión
+vercel login
+
+# Desplegar a producción
 vercel --prod
 ```
 
-### Variables de Entorno
-```env
-# Opcional - para lecturas públicas no se requiere
-AUDIUS_API_KEY=tu_api_key_de_audius
+### Despliegue Automático con GitHub Actions
+
+El repositorio incluye workflows de GitHub Actions que:
+
+1. **deploy.yml**: Despliega automáticamente a Vercel en cada push a `main`
+2. **update-catalog.yml**: Actualiza el catálogo de Audius cada 24 horas
+
+Para activar el despliegue automático:
+
+1. Sube tu código a GitHub
+2. Configura los secretos en GitHub (ver sección anterior)
+3. Haz push a la rama `main`
+4. GitHub Actions desplegará automáticamente a Vercel
+
+### Actualización Manual del Catálogo
+
+```bash
+# Ejecutar script de actualización
+node scripts/update-catalog.js
 ```
+
+Este script:
+- Descarga todas las pistas de Audius
+- Clasifica y cataloga por álbumes
+- Guarda en `src/data/catalog.json`
+- Muestra resumen de pistas por álbum
 
 ## 📁 Estructura de Archivos
 

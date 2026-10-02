@@ -1,0 +1,40 @@
+name: Update Catalog Cron
+
+on:
+  schedule:
+    # Ejecutar cada 24 horas a las 3:00 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Permitir ejecución manual
+
+jobs:
+  update-catalog:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create data directory
+        run: mkdir -p src/data
+
+      - name: Run catalog update script
+        run: node scripts/update-catalog.js
+        env:
+          VITE_AUDIUS_API_KEY: ${{ secrets.AUDIUS_API_KEY }}
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add src/data/catalog.json
+          git diff --staged --quiet || git commit -m "🔄 Auto-update catalog [skip ci]"
+          git push

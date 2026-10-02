@@ -18,6 +18,9 @@ const APP_NAME = 'Radio El Hombre de las Nubes';
 const ARTIST_HANDLE = 'profmanuelgago';
 const PAGE_SIZE = 100;
 
+// API Key de Audius (desde variables de entorno)
+const AUDIUS_API_KEY = import.meta.env.VITE_AUDIUS_API_KEY || 'c687bc369a514c30adcc07ddbc10aeb38fd29f03';
+
 // ============================================================================
 // TIPOS
 // ============================================================================
@@ -142,9 +145,8 @@ export const ALBUM_DEFINITIONS: Album[] = [
  */
 export async function getArtistProfile(): Promise<AudiusUser | null> {
   try {
-    const res = await fetch(
-      `${API_BASE}/users/handle/${ARTIST_HANDLE}?app_name=${encodeURIComponent(APP_NAME)}`
-    );
+    const url = `${API_BASE}/users/handle/${ARTIST_HANDLE}?app_name=${encodeURIComponent(APP_NAME)}&api_key=${AUDIUS_API_KEY}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     return json.data || null;
@@ -162,9 +164,8 @@ export async function fetchTracksPage(
   offset: number = 0
 ): Promise<AudiusTrack[]> {
   try {
-    const res = await fetch(
-      `${API_BASE}/users/handle/${ARTIST_HANDLE}/tracks?limit=${limit}&offset=${offset}&app_name=${encodeURIComponent(APP_NAME)}`
-    );
+    const url = `${API_BASE}/users/handle/${ARTIST_HANDLE}/tracks?limit=${limit}&offset=${offset}&app_name=${encodeURIComponent(APP_NAME)}&api_key=${AUDIUS_API_KEY}`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     return json.data || [];
@@ -213,9 +214,8 @@ export async function fetchAllArtistTracks(
  */
 export async function fetchArtistPlaylists(userId: string): Promise<any[]> {
   try {
-    const res = await fetch(
-      `${API_BASE}/users/${userId}/playlists?app_name=${encodeURIComponent(APP_NAME)}`
-    );
+    const url = `${API_BASE}/users/${userId}/playlists?app_name=${encodeURIComponent(APP_NAME)}&api_key=${AUDIUS_API_KEY}`;
+    const res = await fetch(url);
     if (!res.ok) return [];
     const json = await res.json();
     return json.data || [];
@@ -328,7 +328,7 @@ export function buildCatalog(
  * Construye la URL de stream para una pista
  */
 export function getStreamUrl(trackId: string): string {
-  return `${API_BASE}/tracks/${trackId}/stream?app_name=${encodeURIComponent(APP_NAME)}`;
+  return `${API_BASE}/tracks/${trackId}/stream?app_name=${encodeURIComponent(APP_NAME)}&api_key=${AUDIUS_API_KEY}`;
 }
 
 /**
