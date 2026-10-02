@@ -1,23 +1,19 @@
 /**
- * Cabecera de la emisora
- * Muestra logo, nombre y indicador EN VIVO
+ * StationHeader - Cabecera con indicador EN VIVO
  */
 
 import { useRadioStore } from '../store/useRadioStore';
 import { getCurrentDayName, getCurrentTimeString } from '../lib/scheduler';
 
 export default function StationHeader() {
-  const { status, totalTracks, tracksPlayed } = useRadioStore();
+  const { status, catalog, tracksPlayedCount } = useRadioStore();
   const isLive = status === 'playing' || status === 'tts';
 
   return (
     <header className="relative overflow-hidden">
-      {/* Fondo con gradiente animado */}
       <div className="absolute inset-0 bg-gradient-to-r from-purple-900/20 via-indigo-900/20 to-purple-900/20"></div>
-      
       <div className="relative px-4 py-5 md:px-8 md:py-6">
         <div className="flex items-center justify-between flex-wrap gap-4">
-          {/* Logo y nombre */}
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
@@ -37,28 +33,22 @@ export default function StationHeader() {
             </div>
           </div>
 
-          {/* Indicadores */}
           <div className="flex items-center gap-3 md:gap-4">
-            {/* Badge EN VIVO */}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
-              isLive 
-                ? 'bg-red-500/10 border-red-500/30 text-red-300' 
-                : 'bg-white/5 border-white/10 text-white/40'
+              isLive ? 'bg-red-500/10 border-red-500/30 text-red-300' : 'bg-white/5 border-white/10 text-white/40'
             }`}>
               <div className={`w-2 h-2 rounded-full ${isLive ? 'bg-red-500 animate-pulse' : 'bg-white/20'}`}></div>
               <span className="text-xs font-bold tracking-wider">{isLive ? 'EN VIVO' : 'OFFLINE'}</span>
             </div>
 
-            {/* Hora y día */}
             <div className="hidden md:flex items-center gap-2 text-xs text-white/40">
               <span className="font-mono">{getCurrentTimeString()}</span>
               <span>•</span>
               <span>{getCurrentDayName()}</span>
             </div>
 
-            {/* Contador */}
             <div className="hidden sm:flex items-center gap-2 text-xs text-white/30">
-              <span>🎧 {tracksPlayed}/{totalTracks}</span>
+              <span>🎧 {tracksPlayedCount}/{catalog.length}</span>
             </div>
           </div>
         </div>

@@ -1,197 +1,279 @@
 /**
- * Estado global de la radio con Zustand
- * Maneja: pista actual, cola, historial, reproducción, volumen, metadatos
+ * ============================================================================
+ * FASE 4: MOTOR DE REPRODUCCIÓN CONTINUA - ESTADO GLOBAL
+ * ============================================================================
+ * Zustand store con soporte para QueueItem (tracks + TTS markers),
+ * timeout de seguridad, manejo de errores y regeneración automática.
  */
 
 import { create } from 'zustand';
-import { AudiusTrack, TrackCategory, classifyTrack, getStreamUrl } from '../lib/audius';
-import { ScheduleBlock, generateQueue, getCurrentBlock } from '../lib/scheduler';
+import { AudiusTrack, Album, getStreamUrl } from '../lib/audius';
+import { QueueItem, ScheduleBlock, getCurrentBlock, generateQueue } from '../lib/scheduler';
+import { logTrack, logTTS, logQueue, logError } from '../lib/logger';
+import { savePlayedIds, loadPlayedIds } from '../lib/persistence';
 
 export type RadioStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'tts' | 'error';
 
 interface RadioState {
+  // Catálogo
+  catalog: AudiusTrack[];
+  albums: Album[];
+  isCatalogLoaded: boolean;
+
   // Estado de la radio
   status: RadioStatus;
-  isInitialized: boolean;
-  
-  // Pista actual
+
+  // Cola (QueueItem = track | tts)
+  queue: QueueItem[];
+  currentIndex: number;
+
+  // Pista actual (solo si el item es track)
   currentTrack: AudiusTrack | null;
+  currentTTSMessage: string | null;
   streamUrl: string | null;
-  
-  // Cola y historial
-  queue: AudiusTrack[];
-  history: AudiusTrack[];
-  playedIds: Set<string>;
-  
-  // Programación
-  currentBlock: ScheduleBlock;
-  
+
   // Reproducción
-  progress: number;
-  duration: number;
+  isPlaying: boolean;
+  isTTSPlaying: boolean;
   volume: number;
   isMuted: boolean;
-  
-  // Metadatos
-  totalTracks: number;
-  tracksPlayed: number;
-  
+  progress: number;
+  duration: number;
+
+  // Programación
+  currentBlock: ScheduleBlock;
+
+  // Historial y tracking
+  playedIds: Set<string>;
+  tracksPlayedCount: number;
+  ttsPlayedCount: number;
+  errorCount: number;
+
   // Errores
   error: string | null;
-  
-  // Acciones
-  initialize: (tracks: AudiusTrack[]) => void;
-  setCurrentTrack: (track: AudiusTrack | null) => void;
+
+  // Acciones - Catálogo
+  setCatalog: (tracks: AudiusTrack[], albums: Album[]) => void;
+
+  // Acciones - Cola
+  setQueue: (queue: QueueItem[]) => void;
+  regenerateQueue: () => void;
+
+  // Acciones - Reproducción
+  playCurrentItem: () => void;
+  advanceToNext: () => QueueItem | null;
+  setCurrentTrack: (track: AudiusTrack) => void;
+  setCurrentTTS: (message: string) => void;
+  clearCurrentItem: () => void;
+
+  // Acciones - Estado
   setStatus: (status: RadioStatus) => void;
-  setProgress: (progress: number) => void;
-  setDuration: (duration: number) => void;
+  setIsPlaying: (playing: boolean) => void;
+  setIsTTSPlaying: (playing: boolean) => void;
   setVolume: (volume: number) => void;
   toggleMute: () => void;
+  setProgress: (progress: number) => void;
+  setDuration: (duration: number) => void;
   setError: (error: string | null) => void;
-  
-  // Cola
-  playNext: () => AudiusTrack | null;
-  addToHistory: (track: AudiusTrack) => void;
-  rebuildQueue: () => void;
-  
-  // Playback
-  play: () => void;
-  pause: () => void;
+  setCurrentBlock: (block: ScheduleBlock) => void;
+
+  // Acciones - Tracking
+  markTrackPlayed: (trackId: string) => void;
+  incrementTTSCount: () => void;
+  incrementErrorCount: () => void;
 }
 
 export const useRadioStore = create<RadioState>((set, get) => ({
   // Estado inicial
+  catalog: [],
+  albums: [],
+  isCatalogLoaded: false,
   status: 'idle',
-  isInitialized: false,
-  currentTrack: null,
-  streamUrl: null,
   queue: [],
-  history: [],
-  playedIds: new Set<string>(),
-  currentBlock: getCurrentBlock(),
-  progress: 0,
-  duration: 0,
+  currentIndex: 0,
+  currentTrack: null,
+  currentTTSMessage: null,
+  streamUrl: null,
+  isPlaying: false,
+  isTTSPlaying: false,
   volume: 0.8,
   isMuted: false,
-  totalTracks: 0,
-  tracksPlayed: 0,
+  progress: 0,
+  duration: 0,
+  currentBlock: getCurrentBlock(),
+  playedIds: loadPlayedIds(),
+  tracksPlayedCount: 0,
+  ttsPlayedCount: 0,
+  errorCount: 0,
   error: null,
-  
-  // Inicializar con las pistas cargadas
-  initialize: (tracks: AudiusTrack[]) => {
+
+  // === ACCIONES ===
+
+  setCatalog: (tracks, albums) => {
+    set({ catalog: tracks, albums, isCatalogLoaded: true });
+    logQueue(`Catálogo cargado: ${tracks.length} pistas, ${albums.length} álbumes`);
+  },
+
+  setQueue: (queue) => {
+    set({ queue, currentIndex: 0 });
+    logQueue(`Nueva cola establecida: ${queue.length} items`);
+  },
+
+  regenerateQueue: () => {
+    const { catalog, albums, currentBlock, playedIds } = get();
     const block = getCurrentBlock();
-    const initialQueue = generateQueue(tracks, block);
+    
+    // Reset de exclusiones si hemos reproducido mucho
+    const shouldReset = playedIds.size > catalog.length * 0.8;
+    const excludeIds = shouldReset ? new Set<string>() : playedIds;
+
+    const newQueue = generateQueue(catalog, albums, block, excludeIds);
     
     set({
-      isInitialized: true,
-      totalTracks: tracks.length,
-      queue: initialQueue,
+      queue: newQueue,
+      currentIndex: 0,
       currentBlock: block,
-      status: 'idle',
+      playedIds: shouldReset ? new Set() : playedIds,
     });
-  },
-  
-  setCurrentTrack: (track) => {
-    const streamUrl = track ? getStreamUrl(track.id) : null;
-    set({ currentTrack: track, streamUrl, progress: 0, duration: 0, error: null });
-  },
-  
-  setStatus: (status) => set({ status }),
-  
-  setProgress: (progress) => set({ progress }),
-  
-  setDuration: (duration) => set({ duration }),
-  
-  setVolume: (volume) => set({ volume, isMuted: volume === 0 }),
-  
-  toggleMute: () => {
-    const { isMuted, volume } = get();
-    if (isMuted) {
-      set({ isMuted: false, volume: volume || 0.8 });
+
+    if (shouldReset) {
+      savePlayedIds(new Set());
+      logQueue('Cola regenerada con reset de exclusiones');
     } else {
-      set({ isMuted: true });
+      logQueue(`Cola regenerada: ${newQueue.length} items (bloque: ${block.name})`);
     }
   },
-  
-  setError: (error) => set({ error, status: error ? 'error' : get().status }),
-  
-  // Obtener siguiente pista de la cola
-  playNext: () => {
-    const { queue, playedIds, totalTracks } = get();
-    
-    if (queue.length === 0) {
-      // Reconstruir cola
-      get().rebuildQueue();
+
+  playCurrentItem: () => {
+    const { queue, currentIndex } = get();
+    if (currentIndex >= queue.length) {
+      get().regenerateQueue();
+      return;
+    }
+
+    const item = queue[currentIndex];
+    if (!item) {
+      get().regenerateQueue();
+      return;
+    }
+
+    if (item.type === 'track') {
+      const track = item.track;
+      const streamUrl = getStreamUrl(track.id);
+      set({
+        currentTrack: track,
+        currentTTSMessage: null,
+        streamUrl,
+        status: 'playing',
+        isPlaying: true,
+        isTTSPlaying: false,
+        progress: 0,
+        duration: track.duration,
+        error: null,
+      });
+      logTrack(`Reproduciendo: "${track.title}"`, { id: track.id, duration: track.duration });
+    } else if (item.type === 'tts') {
+      set({
+        currentTrack: null,
+        currentTTSMessage: item.message,
+        streamUrl: null,
+        status: 'tts',
+        isPlaying: false,
+        isTTSPlaying: true,
+      });
+      logTTS(`Locución TTS: "${item.message}"`);
+    }
+  },
+
+  advanceToNext: () => {
+    const { queue, currentIndex, playedIds } = get();
+    const nextIndex = currentIndex + 1;
+
+    if (nextIndex >= queue.length) {
+      // Cola agotada - regenerar
+      logQueue('Cola agotada, regenerando...');
+      get().regenerateQueue();
       const newQueue = get().queue;
       if (newQueue.length > 0) {
-        const nextTrack = newQueue[0];
-        set({ 
-          queue: newQueue.slice(1),
-          playedIds: new Set([...playedIds, nextTrack.id]),
-        });
-        return nextTrack;
+        set({ currentIndex: 0 });
+        return newQueue[0];
       }
       return null;
     }
-    
-    const nextTrack = queue[0];
-    set({ 
-      queue: queue.slice(1),
-      playedIds: new Set([...playedIds, nextTrack.id]),
-    });
-    
-    return nextTrack;
-  },
-  
-  addToHistory: (track) => {
-    const { history, tracksPlayed } = get();
-    set({ 
-      history: [track, ...history].slice(0, 50), // Mantener últimas 50
-      tracksPlayed: tracksPlayed + 1,
-    });
-  },
-  
-  rebuildQueue: () => {
-    const { playedIds } = get();
-    
-    // Obtener todas las pistas del catálogo (necesitamos acceder a ellas)
-    // Usamos las pistas del historial como referencia del catálogo completo
-    const block = getCurrentBlock();
-    
-    // Si tenemos historial, usar esas pistas para regenerar
-    const { history, totalTracks } = get();
-    
-    // Reset de IDs reproducidos si hemos reproducido muchas
-    if (playedIds.size > totalTracks * 0.8) {
-      set({ playedIds: new Set() });
-    }
-    
-    // Generar nueva cola con las pistas disponibles
-    // Nota: necesitamos acceso al catálogo completo aquí
-    // Lo resolvemos pasando las pistas como parámetro desde el componente
-  },
-  
-  play: () => set({ status: 'playing' }),
-  
-  pause: () => set({ status: 'paused' }),
-}));
 
-/**
- * Hook para reconstruir la cola con el catálogo completo
- */
-export function useRebuildQueue(tracks: AudiusTrack[]) {
-  const { playedIds, currentBlock } = useRadioStore();
-  
-  return () => {
-    const block = getCurrentBlock();
-    const shouldReset = playedIds.size > tracks.length * 0.8;
-    const excludeIds: Set<string> = shouldReset ? new Set<string>() : playedIds;
-    const newQueue = generateQueue(tracks, block, excludeIds);
-    
-    useRadioStore.setState({ 
-      queue: newQueue,
-      currentBlock: block,
-      playedIds: shouldReset ? new Set<string>() : playedIds,
+    set({ currentIndex: nextIndex });
+    return queue[nextIndex];
+  },
+
+  setCurrentTrack: (track) => {
+    const streamUrl = getStreamUrl(track.id);
+    set({
+      currentTrack: track,
+      currentTTSMessage: null,
+      streamUrl,
+      status: 'playing',
+      isPlaying: true,
+      isTTSPlaying: false,
+      progress: 0,
+      duration: track.duration,
+      error: null,
     });
-  };
-}
+  },
+
+  setCurrentTTS: (message) => {
+    set({
+      currentTrack: null,
+      currentTTSMessage: message,
+      streamUrl: null,
+      status: 'tts',
+      isPlaying: false,
+      isTTSPlaying: true,
+    });
+  },
+
+  clearCurrentItem: () => {
+    set({
+      currentTrack: null,
+      currentTTSMessage: null,
+      streamUrl: null,
+      isPlaying: false,
+      isTTSPlaying: false,
+    });
+  },
+
+  setStatus: (status) => set({ status }),
+  setIsPlaying: (isPlaying) => set({ isPlaying, status: isPlaying ? 'playing' : 'paused' }),
+  setIsTTSPlaying: (isTTSPlaying) => set({ isTTSPlaying, status: isTTSPlaying ? 'tts' : 'paused' }),
+
+  setVolume: (volume) => set({ volume, isMuted: volume === 0 }),
+  toggleMute: () => {
+    const { isMuted, volume } = get();
+    set({ isMuted: !isMuted, volume: isMuted ? (volume || 0.8) : 0 });
+  },
+
+  setProgress: (progress) => set({ progress }),
+  setDuration: (duration) => set({ duration }),
+  setError: (error) => {
+    set({ error });
+    if (error) logError(error);
+  },
+  setCurrentBlock: (block) => set({ currentBlock: block }),
+
+  markTrackPlayed: (trackId) => {
+    const { playedIds, tracksPlayedCount } = get();
+    const newPlayedIds = new Set(playedIds);
+    newPlayedIds.add(trackId);
+    set({ playedIds: newPlayedIds, tracksPlayedCount: tracksPlayedCount + 1 });
+    savePlayedIds(newPlayedIds);
+  },
+
+  incrementTTSCount: () => {
+    const { ttsPlayedCount } = get();
+    set({ ttsPlayedCount: ttsPlayedCount + 1 });
+  },
+
+  incrementErrorCount: () => {
+    const { errorCount } = get();
+    set({ errorCount: errorCount + 1 });
+  },
+}));
