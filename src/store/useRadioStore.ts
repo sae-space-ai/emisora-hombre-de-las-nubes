@@ -59,6 +59,7 @@ interface RadioState {
   currentAdIndex: number;
   nextAdTime: number;
   adPlayCount: number;
+  isAudioUnlocked: boolean;
 
   // Errores
   error: string | null;
@@ -102,6 +103,7 @@ interface RadioState {
   setNextAdTime: (time: number) => void;
   incrementAdPlayCount: () => void;
   resetAdState: () => void;
+  setAudioUnlocked: (unlocked: boolean) => void;
 }
 
 export const useRadioStore = create<RadioState>((set, get) => ({
@@ -133,6 +135,7 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   currentAdIndex: 0,
   nextAdTime: 0,
   adPlayCount: 0,
+  isAudioUnlocked: false,
   error: null,
 
   // === ACCIONES ===
@@ -324,4 +327,5 @@ export const useRadioStore = create<RadioState>((set, get) => ({
     currentAd: null,
     isPlayingAd: false,
   }),
+  setAudioUnlocked: (unlocked) => set({ isAudioUnlocked: unlocked }),
 }));

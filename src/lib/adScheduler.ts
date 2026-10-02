@@ -77,13 +77,15 @@ class AdScheduler {
   /**
    * Verifica si es momento de reproducir un anuncio durante la pista
    * @param currentTime - Tiempo actual de reproducción en segundos
+   * @param nextAdTime - Tiempo programado para el próximo anuncio
    */
-  shouldPlayAdDuringTrack(currentTime: number): boolean {
+  shouldPlayAdDuringTrack(currentTime: number, nextAdTime: number): boolean {
     if (!adConfig.enableAds) return false;
     if (this.adPlayCount >= adConfig.maxAdsPerTrack) return false;
 
-    if (currentTime >= this.nextAdTime) {
-      console.log(`[AdScheduler] Momento de anuncio en ${currentTime}s (next: ${this.nextAdTime}s)`);
+    // CRÍTICO: Usar comparación >= en lugar de módulo
+    if (currentTime >= nextAdTime && nextAdTime > 0) {
+      console.log(`[AdScheduler] ✅ Momento de anuncio en ${currentTime}s (next: ${nextAdTime}s)`);
       return true;
     }
 

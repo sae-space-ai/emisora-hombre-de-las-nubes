@@ -1,13 +1,17 @@
 /**
- * FASE 5: RadioPlayer con integración de publicidad
- * Reproduce anuncios al inicio, cada 15s y al final de cada pista
+ * FASE CORRECTIVA: RadioPlayer con sistema de publicidad robusto
+ * 
+ * CORRECCIONES APLICADAS:
+ * 1. Desbloqueo de AudioContext y TTS en el primer clic del usuario
+ * 2. Lógica de temporización basada en timestamps (no módulo)
+ * 3. Estrategia de "pausa y reanuda" en lugar de ducking complejo
+ * 4. Indicador visual claro del estado de publicidad
+ * 5. Logs de depuración en puntos clave
  */
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useRadioStore } from '../store/useRadioStore';
-import { audioMixer } from '../lib/audioMixer';
-import { adGenerator } from '../lib/adGenerator';
-import { adScheduler } from '../lib/adScheduler';
+import { adScheduler, Advertiser } from '../lib/adScheduler';
 import { logSystem, logError } from '../lib/logger';
 import Visualizer from './Visualizer';
 
@@ -32,138 +36,186 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
     currentAd,
     isPlayingAd,
     adsEnabled,
+    nextAdTime,
+    isAudioUnlocked,
     setCurrentAd,
     setIsPlayingAd,
+    setNextAdTime,
     incrementAdPlayCount,
+    setAudioUnlocked,
   } = useRadioStore();
 
-  const isMixerInitialized = useRef(false);
   const adInProgress = useRef(false);
+  const ttsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ========================================================================
-  // INICIALIZAR AUDIO MIXER Y AD GENERATOR
+  // FASE 1: DESBLOQUEO DE AUDIO Y TTS (CRÍTICO)
   // ========================================================================
-  useEffect(() => {
-    const initMixer = async () => {
-      if (!audioRef.current || isMixerInitialized.current) return;
-
-      try {
-        await audioMixer.initialize(audioRef.current);
-        adGenerator.initialize();
-        isMixerInitialized.current = true;
-        logSystem('Audio Mixer y Ad Generator inicializados');
-      } catch (error) {
-        logError('Error inicializando Audio Mixer', error);
-      }
-    };
-
-    initMixer();
-  }, [audioRef]);
-
-  // ========================================================================
-  // FUNCIÓN: REPRODUCIR ANUNCIO CON DUCKING
-  // ========================================================================
-  const playAdWithDucking = useCallback(async () => {
-    if (!adsEnabled || adInProgress.current) return;
-
-    const advertiser = adScheduler.getNextAd();
-    if (!advertiser) {
-      console.warn('[RadioPlayer] No hay anunciantes disponibles');
+  const unlockAudioAndTTS = useCallback(async () => {
+    if (isAudioUnlocked) {
+      console.log('[RadioPlayer] Audio ya desbloqueado');
       return;
     }
 
-    adInProgress.current = true;
-    setCurrentAd(advertiser);
-    setIsPlayingAd(true);
-    logSystem(`📢 Reproduciendo anuncio: ${advertiser.name}`);
+    console.log('[RadioPlayer] 🔓 Desbloqueando AudioContext y TTS...');
 
     try {
-      // Aplicar ducking a la música
-      await audioMixer.duckMusic(advertiser.duration);
-
-      // Reproducir anuncio con TTS
-      await adGenerator.speakAd(
-        advertiser,
-        () => {
-          console.log('[RadioPlayer] Anuncio iniciado');
-        },
-        async () => {
-          console.log('[RadioPlayer] Anuncio terminado');
-          
-          // Restaurar volumen de la música
-          await audioMixer.restoreMusic();
-          
-          // Limpiar estado
-          setCurrentAd(null);
-          setIsPlayingAd(false);
-          incrementAdPlayCount();
-          adInProgress.current = false;
-
-          // Reanudar música si estaba sonando
-          if (audioRef.current && status === 'playing') {
-            try {
-              await audioRef.current.play();
-              setIsPlaying(true);
-            } catch (err) {
-              logError('Error reanudando música después del anuncio', err);
-            }
-          }
-        }
-      );
-    } catch (error) {
-      logError('Error reproduciendo anuncio', error);
-      adInProgress.current = false;
-      setCurrentAd(null);
-      setIsPlayingAd(false);
-      await audioMixer.restoreMusic();
-    }
-  }, [adsEnabled, status, setCurrentAd, setIsPlayingAd, incrementAdPlayCount, audioRef, setIsPlaying]);
-
-  // ========================================================================
-  // ANUNCIO AL INICIO DE CADA PISTA
-  // ========================================================================
-  useEffect(() => {
-    if (!currentTrack || !adsEnabled) return;
-    if (!adScheduler.shouldPlayAdAtStart()) return;
-
-    // Pequeño delay para asegurar que el audio está listo
-    const timer = setTimeout(async () => {
-      if (audioRef.current && !adInProgress.current) {
-        // Pausar música
-        audioRef.current.pause();
-        setIsPlaying(false);
-
-        // Reproducir anuncio
-        await playAdWithDucking();
+      // 1. Desbloquear AudioContext
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+        console.log('[RadioPlayer] ✅ AudioContext desbloqueado');
       }
-    }, 500);
+      audioContext.close();
 
-    return () => clearTimeout(timer);
-  }, [currentTrack, adsEnabled]);
+      // 2. Calentar motor de TTS con frase vacía
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance('');
+        utterance.volume = 0;
+        window.speechSynthesis.speak(utterance);
+        console.log('[RadioPlayer] ✅ TTS calentado');
+      }
+
+      // 3. Guardar estado
+      setAudioUnlocked(true);
+      console.log('[RadioPlayer] ✅ Audio y TTS desbloqueados correctamente');
+    } catch (error) {
+      console.error('[RadioPlayer] ❌ Error desbloqueando audio:', error);
+    }
+  }, [isAudioUnlocked, setAudioUnlocked]);
 
   // ========================================================================
-  // ANUNCIOS CADA 15 SEGUNDOS DURANTE LA REPRODUCCIÓN
+  // FASE 3: REPRODUCCIÓN ROBUSTA DEL TTS (PAUSA Y REANUDA)
+  // ========================================================================
+  const playAd = useCallback(async (advertiser: Advertiser): Promise<void> => {
+    if (!adsEnabled || adInProgress.current) {
+      console.log('[RadioPlayer] ⚠️ Anuncio bloqueado (adsEnabled:', adsEnabled, ', inProgress:', adInProgress.current, ')');
+      return;
+    }
+
+    console.log('[RadioPlayer] 📢 Anuncio disparado:', advertiser.name);
+    adInProgress.current = true;
+
+    // 1. Pausar música
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      console.log('[RadioPlayer] ⏸️ Música pausada');
+    }
+
+    // 2. Actualizar estado
+    setCurrentAd(advertiser);
+    setIsPlayingAd(true);
+
+    // 3. Cancelar cualquier TTS previo
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    return new Promise((resolve) => {
+      if (!('speechSynthesis' in window)) {
+        console.error('[RadioPlayer] ❌ TTS no disponible');
+        setIsPlayingAd(false);
+        setCurrentAd(null);
+        adInProgress.current = false;
+        resolve();
+        return;
+      }
+
+      // 4. Crear utterance
+      const utterance = new SpeechSynthesisUtterance(advertiser.adScript);
+      utterance.lang = 'es-ES';
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+
+      // 5. Configurar voz española
+      const voices = window.speechSynthesis.getVoices();
+      const spanishVoice = voices.find(v => v.lang === 'es-ES');
+      if (spanishVoice) {
+        utterance.voice = spanishVoice;
+      }
+
+      console.log('[RadioPlayer] 🎙️ TTS iniciado');
+
+      // 6. Temporizador de seguridad (30 segundos)
+      ttsTimeoutRef.current = setTimeout(() => {
+        console.warn('[RadioPlayer] ⚠️ TTS timeout (30s), forzando finalización');
+        cleanup();
+        resolve();
+      }, 30000);
+
+      // 7. Callbacks
+      utterance.onstart = () => {
+        console.log('[RadioPlayer] ✅ TTS onstart');
+      };
+
+      utterance.onend = () => {
+        console.log('[RadioPlayer] ✅ TTS terminado, reanudando música');
+        cleanup();
+        resolve();
+      };
+
+      utterance.onerror = (event) => {
+        console.error('[RadioPlayer] ❌ Error en TTS:', event.error);
+        cleanup();
+        resolve();
+      };
+
+      // 8. Reproducir TTS
+      window.speechSynthesis.speak(utterance);
+
+      // Función de limpieza
+      const cleanup = () => {
+        if (ttsTimeoutRef.current) {
+          clearTimeout(ttsTimeoutRef.current);
+          ttsTimeoutRef.current = null;
+        }
+
+        setIsPlayingAd(false);
+        setCurrentAd(null);
+        adInProgress.current = false;
+
+        // Reanudar música
+        if (audio && status === 'playing') {
+          audio.play().then(() => {
+            console.log('[RadioPlayer] ▶️ Música reanudada');
+            setIsPlaying(true);
+          }).catch(err => {
+            console.error('[RadioPlayer] ❌ Error reanudando música:', err);
+          });
+        }
+      };
+    });
+  }, [adsEnabled, audioRef, status, setCurrentAd, setIsPlayingAd, setIsPlaying]);
+
+  // ========================================================================
+  // FASE 2: TEMPORIZACIÓN CORREGIDA (EVENTO timeupdate)
   // ========================================================================
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !adsEnabled) return;
+    if (!audio || !adsEnabled || !isAudioUnlocked) return;
 
     const handleTimeUpdate = async () => {
+      // No disparar anuncios si ya hay uno en curso
       if (isPlayingAd || isTTSPlaying || adInProgress.current) return;
 
       const currentTime = audio.currentTime;
-      adScheduler.updatePlayTime(currentTime);
-
-      if (adScheduler.shouldPlayAdDuringTrack(currentTime)) {
-        // Pausar música
-        audio.pause();
-        setIsPlaying(false);
-
-        // Reproducir anuncio
-        await playAdWithDucking();
-
-        // Resetear temporizador para el siguiente anuncio
-        adScheduler.resetAdTimer(currentTime);
+      
+      // Usar la función corregida del scheduler
+      if (adScheduler.shouldPlayAdDuringTrack(currentTime, nextAdTime)) {
+        console.log('[RadioPlayer] ⏰ Disparando anuncio programado en', currentTime, 's');
+        
+        const advertiser = adScheduler.getNextAd();
+        if (advertiser) {
+          await playAd(advertiser);
+          
+          // Actualizar nextAdTime DESPUÉS de que termine el anuncio
+          const newNextAdTime = audio.currentTime + 15;
+          setNextAdTime(newNextAdTime);
+          incrementAdPlayCount();
+          console.log('[RadioPlayer] 📅 Próximo anuncio en', newNextAdTime, 's');
+        }
       }
     };
 
@@ -172,26 +224,59 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [audioRef, adsEnabled, isPlayingAd, isTTSPlaying, setIsPlaying, playAdWithDucking]);
+  }, [audioRef, adsEnabled, isAudioUnlocked, isPlayingAd, isTTSPlaying, nextAdTime, playAd, setNextAdTime, incrementAdPlayCount]);
 
   // ========================================================================
-  // ANUNCIO AL FINAL DE CADA PISTA
+  // FASE 4: ANUNCIO AL INICIO DE CADA PISTA
+  // ========================================================================
+  useEffect(() => {
+    if (!currentTrack || !adsEnabled || !isAudioUnlocked) return;
+    if (!adScheduler.shouldPlayAdAtStart()) return;
+
+    const playStartAd = async () => {
+      console.log('[RadioPlayer] 🎬 Reproduciendo anuncio al inicio de pista');
+      
+      const advertiser = adScheduler.getNextAd();
+      if (advertiser) {
+        await playAd(advertiser);
+        
+        // Programar primer anuncio durante la pista
+        const audio = audioRef.current;
+        if (audio) {
+          setNextAdTime(audio.currentTime + 15);
+          console.log('[RadioPlayer] 📅 Primer anuncio durante pista en 15s');
+        }
+      }
+    };
+
+    // Pequeño delay para asegurar que el audio está listo
+    const timer = setTimeout(playStartAd, 300);
+
+    return () => clearTimeout(timer);
+  }, [currentTrack, adsEnabled, isAudioUnlocked, playAd, setNextAdTime, audioRef]);
+
+  // ========================================================================
+  // FASE 4: ANUNCIO AL FINAL DE CADA PISTA
   // ========================================================================
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !adsEnabled) return;
+    if (!audio || !adsEnabled || !isAudioUnlocked) return;
 
-    const handleEnded = async () => {
+    const handleEnded = async (e: Event) => {
       if (!adScheduler.shouldPlayAdAtEnd()) {
-        // Si no hay anuncio al final, avanzar directamente
+        console.log('[RadioPlayer] ⏭️ Sin anuncio al final, avanzando');
         onAdvance();
         return;
       }
 
       if (adInProgress.current) return;
 
-      // Reproducir anuncio antes de avanzar
-      await playAdWithDucking();
+      console.log('[RadioPlayer] 🏁 Reproduciendo anuncio al final de pista');
+      
+      const advertiser = adScheduler.getNextAd();
+      if (advertiser) {
+        await playAd(advertiser);
+      }
 
       // Avanzar a la siguiente pista
       onAdvance();
@@ -202,7 +287,7 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
     return () => {
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [audioRef, adsEnabled, onAdvance, playAdWithDucking]);
+  }, [audioRef, adsEnabled, isAudioUnlocked, onAdvance, playAd]);
 
   // ========================================================================
   // RESET PARA NUEVA PISTA
@@ -210,6 +295,7 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
   useEffect(() => {
     if (currentTrack) {
       adScheduler.resetForNewTrack();
+      console.log('[RadioPlayer] 🔄 Reset para nueva pista');
     }
   }, [currentTrack]);
 
@@ -217,9 +303,9 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
   // CONTROL DE VOLUMEN
   // ========================================================================
   useEffect(() => {
-    if (audioRef.current && !isPlayingAd) {
-      audioRef.current.volume = isMuted ? 0 : volume;
-      audioMixer.setMasterVolume(isMuted ? 0 : volume);
+    const audio = audioRef.current;
+    if (audio && !isPlayingAd) {
+      audio.volume = isMuted ? 0 : volume;
     }
   }, [volume, isMuted, isPlayingAd, audioRef]);
 
@@ -238,9 +324,20 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
         await audio.play();
         setIsPlaying(true);
       } catch (err) {
-        console.error('[Player] Error:', err);
+        console.error('[RadioPlayer] ❌ Error al reproducir:', err);
       }
     }
+  };
+
+  // ========================================================================
+  // HANDLER PARA BOTÓN INICIAR EMISORA
+  // ========================================================================
+  const handleStartStation = async () => {
+    // FASE 1: Desbloquear audio y TTS ANTES de iniciar
+    await unlockAudioAndTTS();
+    
+    // Luego iniciar la emisora
+    onStartStation();
   };
 
   // ========================================================================
@@ -251,7 +348,7 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
       <div className="text-center py-8">
         <Visualizer />
         <button
-          onClick={onStartStation}
+          onClick={handleStartStation}
           className="mt-6 px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 transition-all shadow-lg shadow-purple-500/20 font-bold text-lg transform hover:scale-105 active:scale-95"
         >
           <span className="flex items-center gap-3">
@@ -264,6 +361,11 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
         <p className="text-xs text-white/30 mt-3">
           Pulsa para activar el audio y comenzar la reproducción autónoma
         </p>
+        {!isAudioUnlocked && (
+          <p className="text-xs text-amber-400/60 mt-2">
+            🔓 Este botón desbloqueará el audio y los anuncios
+          </p>
+        )}
       </div>
     );
   }
@@ -275,19 +377,19 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
     <div className="space-y-4">
       <Visualizer />
 
-      {/* Banner de publicidad */}
+      {/* FASE 5: INDICADOR VISUAL DE PUBLICIDAD */}
       {isPlayingAd && currentAd && (
-        <div className="bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 rounded-xl p-4 animate-pulse">
+        <div className="bg-red-600 text-white p-3 rounded-lg animate-pulse shadow-lg">
           <div className="flex items-center gap-3">
-            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-500/30 flex items-center justify-center">
-              <svg className="w-5 h-5 text-amber-300" fill="currentColor" viewBox="0 0 24 24">
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-xs text-amber-300/80 uppercase tracking-wider font-semibold">Publicidad</p>
-              <p className="text-sm text-white font-medium">{currentAd.name}</p>
-              <p className="text-xs text-white/60">{currentAd.address}</p>
+              <p className="text-xs uppercase tracking-wider font-bold opacity-90">PUBLICIDAD</p>
+              <p className="text-sm font-semibold">{currentAd.name}</p>
+              <p className="text-xs opacity-80">{currentAd.address}</p>
             </div>
           </div>
         </div>
@@ -363,6 +465,15 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
           {Math.round((isMuted ? 0 : volume) * 100)}%
         </span>
       </div>
+
+      {/* Información de depuración */}
+      {import.meta.env.DEV && (
+        <div className="text-[10px] text-white/20 text-center space-y-1">
+          <p>Audio desbloqueado: {isAudioUnlocked ? '✅' : '❌'}</p>
+          <p>Próximo anuncio en: {nextAdTime > 0 ? `${nextAdTime.toFixed(1)}s` : 'No programado'}</p>
+          <p>Anuncios reproducidos: {useRadioStore.getState().adPlayCount}</p>
+        </div>
+      )}
     </div>
   );
 }

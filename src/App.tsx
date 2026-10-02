@@ -476,15 +476,14 @@ function App() {
         <div className="px-4 md:px-8 pb-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Columna izquierda */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Player Card */}
-              <div className="bg-white/[0.03] backdrop-blur-xl rounded-3xl p-6 border border-white/10 shadow-2xl">
-                <RadioPlayer
-                  audioRef={audioRef}
-                  onStartStation={handleStartStation}
-                  onAdvance={handleAdvance}
-                />
-
+              <div className="lg:col-span-2 space-y-6">
+                {/* Player Card */}
+                <div className="bg-white/[0.03] backdrop-blur-xl rounded-3xl p-6 border border-white/10 shadow-2xl">
+                  <RadioPlayer
+                    audioRef={audioRef}
+                    onStartStation={handleStartStation}
+                    onAdvance={handleAdvance}
+                  />
                 {/* Now Playing / TTS */}
                 <div className="mt-6 pt-4 border-t border-white/5">
                   {isTTSPlaying && currentTTSMessage ? (
