@@ -1,0 +1,40 @@
+{
+  "ads": {
+    "start": {
+      "id": "ad_start",
+      "name": "Publicidad de Bienvenida",
+      "file": "/audio/ads/ad_start.mp3",
+      "duration": 15
+    },
+    "middle": [
+      {
+        "id": "ad_1",
+        "name": "Anuncio 1",
+        "file": "/audio/ads/ad_1.mp3",
+        "duration": 10
+      },
+      {
+        "id": "ad_2",
+        "name": "Anuncio 2",
+        "file": "/audio/ads/ad_2.mp3",
+        "duration": 10
+      },
+      {
+        "id": "ad_3",
+        "name": "Anuncio 3",
+        "file": "/audio/ads/ad_3.mp3",
+        "duration": 10
+      }
+    ],
+    "end": {
+      "id": "ad_end",
+      "name": "Publicidad de Cierre",
+      "file": "/audio/ads/ad_end.mp3",
+      "duration": 15
+    }
+  },
+  "config": {
+    "adIntervalSeconds": 10,
+    "waitForSongEnd": true
+  }
+}
