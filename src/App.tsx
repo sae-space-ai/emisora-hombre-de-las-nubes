@@ -28,6 +28,7 @@ import { initTTSSystem, unlockTTS, speakAd, stopTTS } from './lib/ttsService';
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
+import { adScheduler } from './lib/adScheduler';
 import StationHeader from './components/StationHeader';
 import NowPlaying from './components/NowPlaying';
 import RadioPlayer from './components/RadioPlayer';
@@ -74,10 +75,86 @@ function App() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRef = useRef<AudiusTrack[]>([]);
   const albumsRef = useRef<Album[]>([]);
+  const accumulatedMusicTimeRef = useRef(0);
+  const lastAdTimeRef = useRef(0);
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { catalogRef.current = catalog; }, [catalog]);
   useEffect(() => { albumsRef.current = albums; }, [albums]);
+
+  // ========================================================================
+  // SISTEMA DE PUBLICIDAD: Cuñas cada 10 segundos de música
+  // ========================================================================
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => {
+      // Solo contar tiempo si está reproduciendo música (no anuncios)
+      if (store.isPlaying && !store.isTTSPlaying && !store.isPlayingAd) {
+        accumulatedMusicTimeRef.current = audio.currentTime;
+        
+        // Verificar si han pasado 10 segundos desde el último anuncio
+        const timeSinceLastAd = accumulatedMusicTimeRef.current - lastAdTimeRef.current;
+        
+        if (timeSinceLastAd >= 10) {
+          console.log('[App] ⏰ 10 segundos de música - insertando cuña diferente');
+          
+          // Pausar la música
+          audio.pause();
+          
+          // Obtener siguiente anunciante DIFERENTE
+          const advertiser = adScheduler.getNextAd();
+          
+          if (advertiser) {
+            // Reproducir cuña
+            store.setCurrentAd(advertiser);
+            store.setIsPlayingAd(true);
+            
+            speakAd(
+              advertiser.adScript,
+              () => {
+                // Al terminar la cuña
+                console.log('[App] ✅ Cuña de 10s terminada - reanudando música');
+                store.setIsPlayingAd(false);
+                store.setCurrentAd(null);
+                
+                // Resetear el contador
+                lastAdTimeRef.current = audio.currentTime;
+                
+                // Reanudar la música
+                audio.play().catch(err => {
+                  logError('Error reanudando música después de la cuña', err);
+                });
+              },
+              (error) => {
+                // Si hay error, continuar con la música
+                console.error('[App] ❌ Error en cuña de 10s:', error);
+                store.setIsPlayingAd(false);
+                store.setCurrentAd(null);
+                lastAdTimeRef.current = audio.currentTime;
+                audio.play().catch(err => {
+                  logError('Error reanudando música después del error', err);
+                });
+              }
+            );
+          } else {
+            // No hay anunciantes, continuar con la música
+            lastAdTimeRef.current = audio.currentTime;
+            audio.play().catch(err => {
+              logError('Error reanudando música', err);
+            });
+          }
+        }
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [store.isPlaying, store.isTTSPlaying, store.isPlayingAd]);
 
   // ========================================================================
   // FASE 2: CARGA DEL CATÁLOGO
@@ -261,6 +338,9 @@ function App() {
       );
     } else if (nextItem.type === 'track') {
       // Siguiente es track
+      // Resetear el contador de tiempo para las cuñas cada 10s
+      accumulatedMusicTimeRef.current = 0;
+      lastAdTimeRef.current = 0;
       console.log('[App] 🎵 Reproduciendo track:', nextItem.track.title);
 
       // TTS de transición antes de la pista
