@@ -24,6 +24,7 @@ import {
   ScheduleBlock,
 } from './lib/scheduler';
 import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './lib/tts';
+import { initTTSSystem, unlockTTS, speakAd, stopTTS } from './lib/ttsService';
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
@@ -130,6 +131,7 @@ function App() {
 
         // Inicializar TTS
         initTTS();
+        initTTSSystem(); // Nuevo sistema TTS mejorado
 
         // Cargar estado previo
         const savedState = loadRadioState();
@@ -243,42 +245,25 @@ function App() {
       store.setCurrentAd(nextItem.advertiser);
       store.setIsPlayingAd(true);
 
-      // Reproducir anuncio con TTS
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        
-        const utterance = new SpeechSynthesisUtterance(nextItem.advertiser.adScript);
-        utterance.lang = 'es-ES';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-
-        const voices = window.speechSynthesis.getVoices();
-        const spanishVoice = voices.find(v => v.lang === 'es-ES');
-        if (spanishVoice) {
-          utterance.voice = spanishVoice;
-        }
-
-        utterance.onend = () => {
+      // Reproducir anuncio con TTS mejorado
+      speakAd(
+        nextItem.advertiser.adScript,
+        () => {
+          // onEnd
           console.log('[App] ✅ Anuncio terminado');
           store.setIsPlayingAd(false);
           store.setCurrentAd(null);
           // Avanzar al siguiente item
           handleAdvance();
-        };
-
-        utterance.onerror = (event) => {
-          console.error('[App] ❌ Error en anuncio:', event.error);
+        },
+        (error) => {
+          // onError
+          console.error('[App] ❌ Error en anuncio:', error);
           store.setIsPlayingAd(false);
           store.setCurrentAd(null);
           handleAdvance();
-        };
-
-        window.speechSynthesis.speak(utterance);
-      } else {
-        // TTS no disponible, saltar anuncio
-        setTimeout(() => handleAdvance(), 500);
-      }
+        }
+      );
     } else if (nextItem.type === 'track') {
       // Siguiente es track
       // TTS de transición antes de la pista
@@ -343,6 +328,9 @@ function App() {
 
     logSystem('Usuario inició la emisora');
 
+    // Desbloquear TTS con interacción del usuario
+    await unlockTTS();
+
     // Generar cola inicial
     const block = getCurrentBlock();
     store.setCurrentBlock(block);
@@ -379,6 +367,7 @@ function App() {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       stopSpeaking();
+      stopTTS(); // Detener TTS de anuncios
     };
   }, []);
 
