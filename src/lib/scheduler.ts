@@ -250,7 +250,8 @@ export function generateQueue(
 }
 
 /**
- * Construye la cola con UNA cuña al INICIO y UNA cuña al FINAL de cada track
+ * Construye la cola con cuñas al INICIO y FINAL de cada track
+ * Los anuncios cada 10 segundos se manejan en tiempo real
  * Patrón: [AD_START, Track1, AD_END, AD_START, Track2, AD_END, ...]
  */
 function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
@@ -258,7 +259,7 @@ function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
   let adCounter = 0;
 
   for (const track of tracks) {
-    // UNA cuña al INICIO de cada pista
+    // Cuña al INICIO de cada pista
     queue.push({
       type: 'ad',
       advertiser: getNextAdvertiser(),
@@ -269,7 +270,7 @@ function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
     // Pista musical
     queue.push({ type: 'track', track });
 
-    // UNA cuña al FINAL de cada pista
+    // Cuña al FINAL de cada pista
     queue.push({
       type: 'ad',
       advertiser: getNextAdvertiser(),
