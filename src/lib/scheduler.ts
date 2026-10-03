@@ -250,16 +250,16 @@ export function generateQueue(
 }
 
 /**
- * FASE 3.3 CORREGIDA: Construye la cola con anuncios publicitarios intercalados
- * Patrón: [AD_START, Track1, AD_MIDDLE, Track1_continuación, AD_MIDDLE, ..., AD_END, AD_START, Track2, ...]
+ * Construye la cola con cuñas al INICIO y FINAL de cada track
+ * Los anuncios cada 10 segundos se manejan en tiempo real
+ * Patrón: [AD_START, Track1, AD_END, AD_START, Track2, AD_END, ...]
  */
 function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
   const queue: QueueItem[] = [];
-  const adInterval = 15; // segundos entre anuncios
   let adCounter = 0;
 
   for (const track of tracks) {
-    // Anuncio al INICIO de cada pista
+    // Cuña al INICIO de cada pista
     queue.push({
       type: 'ad',
       advertiser: getNextAdvertiser(),
@@ -270,20 +270,7 @@ function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
     // Pista musical
     queue.push({ type: 'track', track });
 
-    // Anuncios cada 15 segundos DURANTE la pista (simulado)
-    const trackDuration = track.duration || 180; // default 3 min
-    const adsDuringTrack = Math.floor(trackDuration / adInterval) - 1; // -1 porque ya pusimos uno al inicio
-    
-    for (let i = 0; i < adsDuringTrack && i < 3; i++) { // máximo 3 anuncios durante la pista
-      queue.push({
-        type: 'ad',
-        advertiser: getNextAdvertiser(),
-        id: `ad-middle-${Date.now()}-${adCounter++}`,
-        position: 'middle',
-      });
-    }
-
-    // Anuncio al FINAL de cada pista
+    // Cuña al FINAL de cada pista
     queue.push({
       type: 'ad',
       advertiser: getNextAdvertiser(),

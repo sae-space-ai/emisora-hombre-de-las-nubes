@@ -2,6 +2,7 @@
 
 > **Emisora de radio digital autónoma 24/7** con el catálogo completo del Prof. Manuel Gago Fernández (@profmanuelgago en Audius)
 
+[![Deploy to Vercel](https://github.com/sae-space-ai/emisora-hombre-de-las-nubes/actions/workflows/deploy.yml/badge.svg)](https://github.com/sae-space-ai/emisora-hombre-de-las-nubes/actions/workflows/deploy.yml)
 ![Estado](https://img.shields.io/badge/estado-en%20vivo-green)
 ![Audius](https://img.shields.io/badge/powered%20by-Audius-purple)
 ![24/7](https://img.shields.io/badge/transmisión-24%2F7%20autónoma-blue)
