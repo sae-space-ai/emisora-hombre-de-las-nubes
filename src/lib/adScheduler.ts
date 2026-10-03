@@ -4,7 +4,20 @@
  */
 
 import advertisersData from '../data/advertisers.json';
-import adConfig from '../data/adConfig.json';
+
+// Configuración hardcoded (antes venía de adConfig.json)
+const AD_CONFIG = {
+  adIntervalSeconds: 10,
+  adMinDurationSeconds: 10,
+  adMaxDurationSeconds: 30,
+  enableDucking: true,
+  duckingLevel: 0.2,
+  duckingFadeSeconds: 0.5,
+  playAdAtStart: true,
+  playAdAtEnd: true,
+  enableAds: true,
+  maxAdsPerTrack: 10
+};
 
 export interface Advertiser {
   id: string;
@@ -28,7 +41,7 @@ class AdScheduler {
   private currentPlayTime = 0; // Tiempo de reproducción musical acumulado
   private nextAdTime = 0; // Tiempo en el que se debe reproducir el siguiente anuncio
   private adPlayCount = 0; // Contador de anuncios reproducidos en la pista actual
-  private adInterval = adConfig.adIntervalSeconds;
+  private adInterval = AD_CONFIG.adIntervalSeconds;
 
   constructor() {
     this.loadAdvertisers();
@@ -80,8 +93,8 @@ class AdScheduler {
    * @param nextAdTime - Tiempo programado para el próximo anuncio
    */
   shouldPlayAdDuringTrack(currentTime: number, nextAdTime: number): boolean {
-    if (!adConfig.enableAds) return false;
-    if (this.adPlayCount >= adConfig.maxAdsPerTrack) return false;
+    if (!AD_CONFIG.enableAds) return false;
+    if (this.adPlayCount >= AD_CONFIG.maxAdsPerTrack) return false;
 
     // CRÍTICO: Usar comparación >= en lugar de módulo
     if (currentTime >= nextAdTime && nextAdTime > 0) {
@@ -105,14 +118,14 @@ class AdScheduler {
    * Verifica si se debe reproducir un anuncio al inicio de la pista
    */
   shouldPlayAdAtStart(): boolean {
-    return adConfig.enableAds && adConfig.playAdAtStart;
+    return AD_CONFIG.enableAds && AD_CONFIG.playAdAtStart;
   }
 
   /**
    * Verifica si se debe reproducir un anuncio al final de la pista
    */
   shouldPlayAdAtEnd(): boolean {
-    return adConfig.enableAds && adConfig.playAdAtEnd;
+    return AD_CONFIG.enableAds && AD_CONFIG.playAdAtEnd;
   }
 
   /**

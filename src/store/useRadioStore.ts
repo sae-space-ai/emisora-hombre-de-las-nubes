@@ -14,7 +14,7 @@ import { savePlayedIds, loadPlayedIds } from '../lib/persistence';
 
 export type RadioStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'tts' | 'error';
 
-import { Advertiser } from '../lib/ads';
+import { Advertiser } from '../lib/adScheduler';
 
 interface RadioState {
   // Catálogo
