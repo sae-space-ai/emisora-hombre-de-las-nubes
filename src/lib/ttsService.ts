@@ -142,12 +142,8 @@ export function speakAd(
     return;
   }
 
-  // Esperar a que las voces estén cargadas
-  if (!voicesLoaded) {
-    console.log('[TTS] ⏳ Esperando a que las voces estén cargadas...');
-    setTimeout(() => speakAd(script, onEnd, onError), 100);
-    return;
-  }
+  // No entrar en espera infinita: algunos navegadores no notifican voiceschanged.
+  if (!voicesLoaded) loadVoices();
 
   console.log(`[TTS] 🎙️ Reproduciendo anuncio: "${script.substring(0, 50)}..."`);
 

@@ -3,7 +3,7 @@
  * Los anuncios se reproducen como parte natural de la secuencia de QueueItems
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useRadioStore } from '../store/useRadioStore';
 import { logSystem, logError } from '../lib/logger';
 import Visualizer from './Visualizer';
@@ -28,114 +28,9 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
     toggleMute,
     currentAd,
     isPlayingAd,
-    adsEnabled,
-    setCurrentAd,
-    setIsPlayingAd,
   } = useRadioStore();
 
-  const ttsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // ========================================================================
-  // REPRODUCIR ANUNCIO (como parte de la cola)
-  // ========================================================================
-  const playAd = useCallback(async (advertiser: any): Promise<void> => {
-    if (!adsEnabled) {
-      console.log('[RadioPlayer] ⚠️ Anuncios deshabilitados, saltando');
-      return;
-    }
-
-    console.log('[RadioPlayer] 📢 Reproduciendo anuncio:', advertiser.name);
-
-    // 1. Pausar música si está sonando
-    const audio = audioRef.current;
-    if (audio && isPlaying) {
-      audio.pause();
-      console.log('[RadioPlayer] ⏸️ Música pausada para anuncio');
-    }
-
-    // 2. Actualizar estado
-    setCurrentAd(advertiser);
-    setIsPlayingAd(true);
-
-    // 3. Cancelar cualquier TTS previo
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
-    return new Promise((resolve) => {
-      if (!('speechSynthesis' in window)) {
-        console.error('[RadioPlayer] ❌ TTS no disponible');
-        setIsPlayingAd(false);
-        setCurrentAd(null);
-        resolve();
-        return;
-      }
-
-      // 4. Crear utterance
-      const utterance = new SpeechSynthesisUtterance(advertiser.adScript);
-      utterance.lang = 'es-ES';
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-
-      // 5. Configurar voz española
-      const voices = window.speechSynthesis.getVoices();
-      const spanishVoice = voices.find(v => v.lang === 'es-ES');
-      if (spanishVoice) {
-        utterance.voice = spanishVoice;
-      }
-
-      console.log('[RadioPlayer] 🎙️ TTS iniciado');
-
-      // 6. Temporizador de seguridad (30 segundos)
-      ttsTimeoutRef.current = setTimeout(() => {
-        console.warn('[RadioPlayer] ⚠️ TTS timeout (30s), forzando finalización');
-        cleanup();
-        resolve();
-      }, 30000);
-
-      // 7. Callbacks
-      utterance.onstart = () => {
-        console.log('[RadioPlayer] ✅ TTS onstart');
-      };
-
-      utterance.onend = () => {
-        console.log('[RadioPlayer] ✅ TTS terminado');
-        cleanup();
-        resolve();
-      };
-
-      utterance.onerror = (event) => {
-        console.error('[RadioPlayer] ❌ Error en TTS:', event.error);
-        cleanup();
-        resolve();
-      };
-
-      // 8. Reproducir TTS
-      window.speechSynthesis.speak(utterance);
-
-      // Función de limpieza
-      const cleanup = () => {
-        if (ttsTimeoutRef.current) {
-          clearTimeout(ttsTimeoutRef.current);
-          ttsTimeoutRef.current = null;
-        }
-
-        setIsPlayingAd(false);
-        setCurrentAd(null);
-
-        // Reanudar música si estaba sonando antes del anuncio
-        if (audio && status === 'playing') {
-          audio.play().then(() => {
-            console.log('[RadioPlayer] ▶️ Música reanudada después del anuncio');
-            setIsPlaying(true);
-          }).catch(err => {
-            console.error('[RadioPlayer] ❌ Error reanudando música:', err);
-          });
-        }
-      };
-    });
-  }, [adsEnabled, audioRef, isPlaying, status, setCurrentAd, setIsPlayingAd, setIsPlaying]);
+  // Las cuñas las controla exclusivamente App.onTimeUpdate.
 
   // ========================================================================
   // CONTROL DE VOLUMEN
@@ -209,7 +104,7 @@ export default function RadioPlayer({ audioRef, onStartStation, onAdvance }: Rad
               </svg>
             </div>
             <div className="flex-1">
-              <p className="text-xs uppercase tracking-wider font-bold opacity-90">PUBLICIDAD</p>
+              <p className="text-xs uppercase tracking-wider font-bold opacity-90">MENCIÓN LOCAL · NO PATROCINADA</p>
               <p className="text-sm font-semibold">{currentAd.name}</p>
               <p className="text-xs opacity-80">{currentAd.address}</p>
             </div>

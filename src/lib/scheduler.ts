@@ -8,7 +8,7 @@
  */
 
 import { AudiusTrack, Album, TrackCategory, classifyTrack, DAY_NAMES } from './audius';
-import { Advertiser, adScheduler } from './adScheduler';
+import type { Advertiser } from './adScheduler';
 
 // ============================================================================
 // TIPOS
@@ -187,8 +187,8 @@ export function getNextBlock(): ScheduleBlock {
 
 /**
  * Genera una cola de reproducción basada en el bloque actual.
- * Alterna pistas musicales con marcadores TTS cada 3 pistas.
- * Patrón: [Pista1, Pista2, Pista3, TTS, Pista4, Pista5, Pista6, TTS, ...]
+ * Construye la secuencia musical sin anuncios consecutivos en cola.
+ * La inserción publicitaria ocurre dentro del reproductor, con pausa y reanudación.
  */
 export function generateQueue(
   tracks: AudiusTrack[],
@@ -245,80 +245,12 @@ export function generateQueue(
     matchingTracks = shuffleArray(uniqueTracks);
   }
 
-  // 2. Construir QueueItem[] con anuncios publicitarios intercalados
-  return buildQueueWithAds(matchingTracks);
+  // La cola contiene canciones completas. Una única cuña se inserta durante la
+  // reproducción real cada 10 segundos de música, mediante App.onTimeUpdate.
+  return matchingTracks.map(track => ({ type: 'track' as const, track }));
 }
 
-/**
- * FASE 3.3 CORREGIDA: Construye la cola con anuncios publicitarios intercalados
- * Patrón: [AD_START, Track1, AD_MIDDLE, Track1_continuación, AD_MIDDLE, ..., AD_END, AD_START, Track2, ...]
- */
-function buildQueueWithAds(tracks: AudiusTrack[]): QueueItem[] {
-  const queue: QueueItem[] = [];
-  const adInterval = 15; // segundos entre anuncios
-  let adCounter = 0;
-
-  for (const track of tracks) {
-    // Anuncio al INICIO de cada pista
-    queue.push({
-      type: 'ad',
-      advertiser: getNextAdvertiser(),
-      id: `ad-start-${Date.now()}-${adCounter++}`,
-      position: 'start',
-    });
-
-    // Pista musical
-    queue.push({ type: 'track', track });
-
-    // Anuncios cada 15 segundos DURANTE la pista (simulado)
-    const trackDuration = track.duration || 180; // default 3 min
-    const adsDuringTrack = Math.floor(trackDuration / adInterval) - 1; // -1 porque ya pusimos uno al inicio
-    
-    for (let i = 0; i < adsDuringTrack && i < 3; i++) { // máximo 3 anuncios durante la pista
-      queue.push({
-        type: 'ad',
-        advertiser: getNextAdvertiser(),
-        id: `ad-middle-${Date.now()}-${adCounter++}`,
-        position: 'middle',
-      });
-    }
-
-    // Anuncio al FINAL de cada pista
-    queue.push({
-      type: 'ad',
-      advertiser: getNextAdvertiser(),
-      id: `ad-end-${Date.now()}-${adCounter++}`,
-      position: 'end',
-    });
-  }
-
-  return queue;
-}
-
-/**
- * Obtiene el siguiente anuncio de la rotación
- */
-function getNextAdvertiser(): Advertiser {
-  const ad = adScheduler.getNextAd();
-  if (!ad) {
-    // Si no hay anunciantes, devolver un anuncio placeholder
-    return {
-      id: 'placeholder',
-      name: 'El Hombre de las Nubes',
-      category: 'Emisora',
-      address: 'Almendralejo',
-      phone: '',
-      website: '',
-      description: 'Radio autónoma 24/7',
-      adScript: 'Estás escuchando El Hombre de las Nubes, la radio digital del Profesor Manuel Gago Fernández.',
-      audioFile: null,
-      ttsVoice: 'es-ES',
-      duration: 10,
-      enabled: true
-    };
-  }
-  return ad;
-}
+// El motor publicitario ya no agrega elementos consecutivos a la cola.
 
 /**
  * FASE 3.4: Obtiene un mensaje TTS aleatorio

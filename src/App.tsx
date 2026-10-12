@@ -25,6 +25,7 @@ import {
 } from './lib/scheduler';
 import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './lib/tts';
 import { initTTSSystem, unlockTTS, speakAd, stopTTS } from './lib/ttsService';
+import { adScheduler } from './lib/adScheduler';
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
@@ -38,6 +39,8 @@ import PlaylistQueue from './components/PlaylistQueue';
 // TIMEOUT DE SEGURIDAD (FASE 4.3): 10 segundos
 // ============================================================================
 const STREAM_TIMEOUT_MS = 10000;
+const AD_INTERVAL_SECONDS = 10;
+const AD_SPOT_DURATION_MS = 10_000;
 
 function App() {
   // Estado local
@@ -46,7 +49,7 @@ function App() {
   const [isReady, setIsReady] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [lastBlockName, setLastBlockName] = useState('');
-  const [showAd, setShowAd] = useState(false);
+  // La publicidad depende únicamente del avance real del audio.
 
   // Store
   const store = useRadioStore();
@@ -74,6 +77,10 @@ function App() {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const catalogRef = useRef<AudiusTrack[]>([]);
   const albumsRef = useRef<Album[]>([]);
+  const nextAdAtRef = useRef(AD_INTERVAL_SECONDS);
+  const adActiveRef = useRef(false);
+  const adTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adGenerationRef = useRef(0);
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
   useEffect(() => { catalogRef.current = catalog; }, [catalog]);
@@ -265,6 +272,7 @@ function App() {
         }
       );
     } else if (nextItem.type === 'track') {
+      nextAdAtRef.current = AD_INTERVAL_SECONDS;
       // Siguiente es track
       // TTS de transición antes de la pista
       if (ttsEnabledRef.current && isTTSAvailable() && tracksPlayedCount > 0 && tracksPlayedCount % 5 === 0) {
@@ -291,6 +299,65 @@ function App() {
       }
     }
   }, [currentTrack, isTTSPlaying, tracksPlayedCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ========================================================================
+  // UN SOLO ANUNCIO CADA 10 SEGUNDOS DE MÚSICA REAL: CUÑA DE 10 SEGUNDOS
+  // ========================================================================
+  const handleMusicTimeUpdate = () => {
+    const audio = audioRef.current;
+    const state = useRadioStore.getState();
+    if (!audio || audio.paused || !state.currentTrack || !state.adsEnabled ||
+        adActiveRef.current || audio.currentTime < nextAdAtRef.current) return;
+
+    // El siguiente disparo se programa después de otros diez segundos de canción.
+    // Nunca se insertan varias cuñas simultáneas ni anuncios de cola.
+    nextAdAtRef.current = audio.currentTime + AD_INTERVAL_SECONDS;
+    const advertiser = adScheduler.getNextAd();
+    if (!advertiser) return;
+
+    const generation = ++adGenerationRef.current;
+    adActiveRef.current = true;
+    audio.pause(); // Conserva currentTime: no reinicia la canción
+    state.setCurrentAd(advertiser);
+    state.setIsPlayingAd(true);
+
+    const finish = () => {
+      if (!adActiveRef.current || adGenerationRef.current !== generation) return;
+      adActiveRef.current = false;
+      if (adTimerRef.current) {
+        clearTimeout(adTimerRef.current);
+        adTimerRef.current = null;
+      }
+      const latest = useRadioStore.getState();
+      latest.setIsPlayingAd(false);
+      latest.setCurrentAd(null);
+      if (latest.currentTrack?.id === state.currentTrack?.id) {
+        audio.play().then(() => {
+          useRadioStore.getState().setIsPlaying(true);
+        }).catch(err => {
+          logError('No se pudo reanudar la pista tras la cuña', err);
+          useRadioStore.getState().setIsPlaying(false);
+        });
+      }
+    };
+
+    // Un hueco publicitario dura diez segundos como máximo; si la voz acaba
+    // antes, se mantiene el hueco y NO comienza otra cuña.
+    adTimerRef.current = setTimeout(() => {
+      stopTTS();
+      finish();
+    }, AD_SPOT_DURATION_MS);
+
+    speakAd(
+      advertiser.adScript,
+      () => { /* Voz terminada: esperar al final del hueco de 10 segundos */ },
+      (error) => {
+        logError('Fallo en la locución comercial: ' + error);
+        stopTTS();
+        finish(); // Sin voz disponible, no bloquear la música.
+      }
+    );
+  };
 
   // ========================================================================
   // FASE 4.3: TIMEOUT DE SEGURIDAD (10 segundos)
@@ -366,6 +433,8 @@ function App() {
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (adTimerRef.current) clearTimeout(adTimerRef.current);
+      adActiveRef.current = false;
       stopSpeaking();
       stopTTS(); // Detener TTS de anuncios
     };
@@ -431,6 +500,7 @@ function App() {
         ref={audioRef}
         preload="auto"
         crossOrigin="anonymous"
+        onTimeUpdate={handleMusicTimeUpdate}
         onEnded={() => handleAdvance()}
         onError={(e) => {
           logError('Error de audio', { error: e });
@@ -567,11 +637,11 @@ function App() {
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Anuncios</span>
-                    <span className="text-white/50 font-mono">15 empresas</span>
+                    <span className="text-white/50 font-mono">{adScheduler.getAllAdvertisers().length} negocios de Utrera</span>
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Intervalo</span>
-                    <span className="text-white/50 font-mono">30s</span>
+                    <span className="text-white/50 font-mono">10 s de música · 1 cuña de 10 s</span>
                   </div>
                 </div>
               </div>

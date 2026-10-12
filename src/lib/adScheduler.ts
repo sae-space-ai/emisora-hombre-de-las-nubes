@@ -13,10 +13,10 @@ const AD_CONFIG = {
   enableDucking: true,
   duckingLevel: 0.2,
   duckingFadeSeconds: 0.5,
-  playAdAtStart: true,
-  playAdAtEnd: true,
+  playAdAtStart: false,
+  playAdAtEnd: false,
   enableAds: true,
-  maxAdsPerTrack: 10
+  maxAdsPerTrack: Number.MAX_SAFE_INTEGER
 };
 
 export interface Advertiser {
@@ -33,11 +33,14 @@ export interface Advertiser {
   ttsVoice: string;
   duration: number;
   enabled: boolean;
+  sponsored?: boolean;
 }
 
 class AdScheduler {
   private advertisers: Advertiser[] = [];
   private history: string[] = []; // Historial de IDs reproducidos
+  private rotation: Advertiser[] = [];
+  private lastAdId: string | null = null;
   private currentPlayTime = 0; // Tiempo de reproducción musical acumulado
   private nextAdTime = 0; // Tiempo en el que se debe reproducir el siguiente anuncio
   private adPlayCount = 0; // Contador de anuncios reproducidos en la pista actual
@@ -60,31 +63,25 @@ class AdScheduler {
    * Evita repetir el mismo anuncio dos veces seguidas
    */
   getNextAd(): Advertiser | null {
-    if (this.advertisers.length === 0) {
-      console.warn('[AdScheduler] No hay anunciantes disponibles');
-      return null;
+    const enabled = this.advertisers.filter(ad => ad.enabled);
+    if (enabled.length === 0) return null;
+
+    // Baraja sin reposición: todos los negocios aparecen una vez antes de repetir.
+    if (this.rotation.length === 0) {
+      this.rotation = [...enabled];
+      for (let i = this.rotation.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [this.rotation[i], this.rotation[j]] = [this.rotation[j], this.rotation[i]];
+      }
+      if (this.rotation.length > 1 && this.rotation[0].id === this.lastAdId) {
+        [this.rotation[0], this.rotation[1]] = [this.rotation[1], this.rotation[0]];
+      }
     }
-
-    // Filtrar anunciantes que no estén en el historial reciente
-    const availableAds = this.advertisers.filter(
-      ad => !this.history.includes(ad.id)
-    );
-
-    // Si todos están en el historial, resetear
-    const pool = availableAds.length > 0 ? availableAds : this.advertisers;
-
-    // Seleccionar aleatoriamente
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    const selectedAd = pool[randomIndex];
-
-    // Actualizar historial (mantener últimos 5)
-    this.history.push(selectedAd.id);
-    if (this.history.length > 5) {
-      this.history.shift();
-    }
-
-    console.log(`[AdScheduler] Siguiente anuncio: ${selectedAd.name}`);
-    return selectedAd;
+    const selected = this.rotation.shift()!;
+    this.lastAdId = selected.id;
+    this.history.push(selected.id);
+    if (this.history.length > 5) this.history.shift();
+    return selected;
   }
 
   /**
@@ -182,6 +179,7 @@ class AdScheduler {
     const advertiser = this.advertisers.find(ad => ad.id === id);
     if (advertiser) {
       advertiser.enabled = enabled;
+      this.rotation = [];
       console.log(`[AdScheduler] Anunciante ${id} ${enabled ? 'habilitado' : 'deshabilitado'}`);
     }
   }

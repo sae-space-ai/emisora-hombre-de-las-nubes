@@ -146,7 +146,7 @@ export const useRadioStore = create<RadioState>((set, get) => ({
   },
 
   setQueue: (queue) => {
-    set({ queue, currentIndex: 0 });
+    set({ queue, currentIndex: -1 });
     logQueue(`Nueva cola establecida: ${queue.length} items`);
   },
 
@@ -162,7 +162,7 @@ export const useRadioStore = create<RadioState>((set, get) => ({
     
     set({
       queue: newQueue,
-      currentIndex: 0,
+      currentIndex: -1,
       currentBlock: block,
       playedIds: shouldReset ? new Set() : playedIds,
     });
