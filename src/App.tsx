@@ -26,6 +26,7 @@ import {
 import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './lib/tts';
 import { initTTSSystem, unlockTTS, speakAd, stopTTS } from './lib/ttsService';
 import { adScheduler } from './lib/adScheduler';
+import { AD_INTERVAL_SECONDS, AD_SPOT_DURATION_MS, nextAdMark, isAdDue } from './lib/adTiming';
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
@@ -39,8 +40,6 @@ import PlaylistQueue from './components/PlaylistQueue';
 // TIMEOUT DE SEGURIDAD (FASE 4.3): 10 segundos
 // ============================================================================
 const STREAM_TIMEOUT_MS = 10000;
-const AD_INTERVAL_SECONDS = 10;
-const AD_SPOT_DURATION_MS = 10_000;
 
 function App() {
   // Estado local
@@ -305,14 +304,12 @@ function App() {
   const handleMusicTimeUpdate = () => {
     const audio = audioRef.current;
     const state = useRadioStore.getState();
-    if (!audio || audio.paused || !state.currentTrack || !state.adsEnabled ||
-        adActiveRef.current || audio.seeking || audio.readyState < 2 ||
-        !Number.isFinite(audio.currentTime) || audio.currentTime < nextAdAtRef.current) return;
+    if (!audio || !state.currentTrack || audio.seeking || audio.readyState < 2 ||
+        !isAdDue(audio.currentTime, nextAdAtRef.current, !audio.paused, adActiveRef.current, state.adsEnabled)) return;
 
     // El siguiente disparo se programa después de otros diez segundos de canción.
     // Nunca se insertan varias cuñas simultáneas ni anuncios de cola.
-    nextAdAtRef.current =
-      (Math.floor(audio.currentTime / AD_INTERVAL_SECONDS) + 1) * AD_INTERVAL_SECONDS;
+    nextAdAtRef.current = nextAdMark(audio.currentTime);
     const advertiser = adScheduler.getNextAd();
     if (!advertiser) return;
 
@@ -507,8 +504,7 @@ function App() {
         onSeeked={() => {
           const audio = audioRef.current;
           if (audio && !adActiveRef.current) {
-            nextAdAtRef.current =
-              (Math.floor(audio.currentTime / AD_INTERVAL_SECONDS) + 1) * AD_INTERVAL_SECONDS;
+            nextAdAtRef.current = nextAdMark(audio.currentTime);
           }
         }}
         onEnded={() => handleAdvance()}
