@@ -78,6 +78,8 @@ function App() {
   const catalogRef = useRef<AudiusTrack[]>([]);
   const albumsRef = useRef<Album[]>([]);
   const nextAdAtRef = useRef(AD_INTERVAL_SECONDS);
+  const startedRef = useRef(false);
+  const previousTrackRef = useRef<string | null>(null);
   const adActiveRef = useRef(false);
   const adTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adGenerationRef = useRef(0);
@@ -215,16 +217,25 @@ function App() {
       timeoutRef.current = null;
     }
 
-    // Marcar track como reproducida
-    if (currentTrack) {
-      store.markTrackPlayed(currentTrack.id);
+    // Usar siempre el estado actual, no la instantánea del último render.
+    const stateBeforeAdvance = useRadioStore.getState();
+    if (adActiveRef.current) {
+      ++adGenerationRef.current;
+      adActiveRef.current = false;
+      if (adTimerRef.current) clearTimeout(adTimerRef.current);
+      adTimerRef.current = null;
+      stopTTS();
+      stateBeforeAdvance.setCurrentAd(null);
+      stateBeforeAdvance.setIsPlayingAd(false);
     }
-    if (isTTSPlaying) {
-      store.incrementTTSCount();
+    if (stateBeforeAdvance.currentTrack?.id === previousTrackRef.current) {
+      stateBeforeAdvance.markTrackPlayed(previousTrackRef.current!);
+      previousTrackRef.current = null;
     }
+    if (stateBeforeAdvance.isTTSPlaying) stateBeforeAdvance.incrementTTSCount();
 
     // Avanzar al siguiente item
-    const nextItem = store.advanceToNext();
+    const nextItem = useRadioStore.getState().advanceToNext();
     if (!nextItem) {
       logError('No se pudo obtener siguiente item');
       return;
@@ -247,30 +258,8 @@ function App() {
         setTimeout(() => handleAdvance(), 500);
       }
     } else if (nextItem.type === 'ad') {
-      // Siguiente es ANUNCIO PUBLICITARIO
-      console.log('[App] 📢 Reproduciendo anuncio:', nextItem.advertiser.name);
-      store.setCurrentAd(nextItem.advertiser);
-      store.setIsPlayingAd(true);
-
-      // Reproducir anuncio con TTS mejorado
-      speakAd(
-        nextItem.advertiser.adScript,
-        () => {
-          // onEnd
-          console.log('[App] ✅ Anuncio terminado');
-          store.setIsPlayingAd(false);
-          store.setCurrentAd(null);
-          // Avanzar al siguiente item
-          handleAdvance();
-        },
-        (error) => {
-          // onError
-          console.error('[App] ❌ Error en anuncio:', error);
-          store.setIsPlayingAd(false);
-          store.setCurrentAd(null);
-          handleAdvance();
-        }
-      );
+      // Compatibilidad con colas antiguas; los anuncios ahora solo son por tiempo.
+      setTimeout(() => handleAdvance(), 0);
     } else if (nextItem.type === 'track') {
       nextAdAtRef.current = AD_INTERVAL_SECONDS;
       // Siguiente es track
@@ -280,21 +269,31 @@ function App() {
         await speakStationID();
       }
 
-      store.setCurrentTrack(nextItem.track);
-
-      // Reproducir audio
+      useRadioStore.getState().setCurrentTrack(nextItem.track);
+      const updatedState = useRadioStore.getState();
       const audio = audioRef.current;
       if (audio) {
-        audio.src = store.streamUrl!;
-        audio.volume = store.isMuted ? 0 : store.volume;
+        // Crucial: `store.streamUrl` era obsoleta tras setCurrentTrack.
+        if (!updatedState.streamUrl) {
+          logError('La canción no tiene URL válida');
+          setTimeout(() => handleAdvance(), 1000);
+          return;
+        }
+        previousTrackRef.current = nextItem.track.id;
+        audio.src = updatedState.streamUrl;
+        audio.volume = updatedState.isMuted ? 0 : updatedState.volume;
         try {
           await audio.play();
-          store.setIsPlaying(true);
+          useRadioStore.getState().setIsPlaying(true);
           startStreamTimeout();
         } catch (err) {
-          logError('Error al reproducir audio', err);
-          // Saltar a la siguiente
-          setTimeout(() => handleAdvance(), 1000);
+          logError('Error al reproducir audio de Audius', err);
+          if (err instanceof DOMException && err.name === 'NotAllowedError') {
+            useRadioStore.getState().setIsPlaying(false);
+            useRadioStore.getState().setError('El navegador bloqueó el sonido. Pulsa Reproducir.');
+          } else {
+            setTimeout(() => handleAdvance(), 1000);
+          }
         }
       }
     }
@@ -307,19 +306,24 @@ function App() {
     const audio = audioRef.current;
     const state = useRadioStore.getState();
     if (!audio || audio.paused || !state.currentTrack || !state.adsEnabled ||
-        adActiveRef.current || audio.currentTime < nextAdAtRef.current) return;
+        adActiveRef.current || audio.seeking || audio.readyState < 2 ||
+        !Number.isFinite(audio.currentTime) || audio.currentTime < nextAdAtRef.current) return;
 
     // El siguiente disparo se programa después de otros diez segundos de canción.
     // Nunca se insertan varias cuñas simultáneas ni anuncios de cola.
-    nextAdAtRef.current = audio.currentTime + AD_INTERVAL_SECONDS;
+    nextAdAtRef.current =
+      (Math.floor(audio.currentTime / AD_INTERVAL_SECONDS) + 1) * AD_INTERVAL_SECONDS;
     const advertiser = adScheduler.getNextAd();
     if (!advertiser) return;
 
     const generation = ++adGenerationRef.current;
     adActiveRef.current = true;
-    audio.pause(); // Conserva currentTime: no reinicia la canción
+    audio.pause(); // Conserva el segundo exacto de la canción
+    state.setIsPlaying(false);
     state.setCurrentAd(advertiser);
     state.setIsPlayingAd(true);
+    state.incrementAdPlayCount();
+    logSystem(`Cuña iniciada: ${advertiser.name} en ${audio.currentTime.toFixed(2)} s`);
 
     const finish = () => {
       if (!adActiveRef.current || adGenerationRef.current !== generation) return;
@@ -334,9 +338,11 @@ function App() {
       if (latest.currentTrack?.id === state.currentTrack?.id) {
         audio.play().then(() => {
           useRadioStore.getState().setIsPlaying(true);
+          logSystem(`Cuña terminada: canción reanudada en ${audio.currentTime.toFixed(2)} s`);
         }).catch(err => {
           logError('No se pudo reanudar la pista tras la cuña', err);
           useRadioStore.getState().setIsPlaying(false);
+          useRadioStore.getState().setError('Pulsa Reproducir para reanudar después de la cuña.');
         });
       }
     };
@@ -395,8 +401,10 @@ function App() {
 
     logSystem('Usuario inició la emisora');
 
-    // Desbloquear TTS con interacción del usuario
-    await unlockTTS();
+    // El stream necesita iniciarse de forma inmediata con el clic del oyente.
+    // Esperar el sintetizador de voz provoca bloqueos/autoplay denegado.
+    if (startedRef.current) return;
+    startedRef.current = true;
 
     // Generar cola inicial
     const block = getCurrentBlock();
@@ -406,14 +414,9 @@ function App() {
     const initialQueue = generateQueue(catalogRef.current, albumsRef.current, block);
     store.setQueue(initialQueue);
 
-    // TTS de bienvenida
-    if (ttsEnabledRef.current && isTTSAvailable()) {
-      store.setCurrentTTS('');
-      await speak(getWelcomeMessage(), { rate: 0.85 });
-    }
-
-    // Empezar con la primera pista
-    handleAdvance();
+    // Iniciar audio sin esperar una locución potencialmente bloqueada.
+    void handleAdvance();
+    void unlockTTS().catch(err => logError('No pudo desbloquearse TTS', err));
   }, [isCatalogLoaded, handleAdvance]);
 
   // ========================================================================
@@ -501,11 +504,18 @@ function App() {
         preload="auto"
         crossOrigin="anonymous"
         onTimeUpdate={handleMusicTimeUpdate}
+        onSeeked={() => {
+          const audio = audioRef.current;
+          if (audio && !adActiveRef.current) {
+            nextAdAtRef.current =
+              (Math.floor(audio.currentTime / AD_INTERVAL_SECONDS) + 1) * AD_INTERVAL_SECONDS;
+          }
+        }}
         onEnded={() => handleAdvance()}
         onError={(e) => {
           logError('Error de audio', { error: e });
-          store.incrementErrorCount();
-          setTimeout(() => handleAdvance(), 1000);
+          useRadioStore.getState().incrementErrorCount();
+          if (!adActiveRef.current) setTimeout(() => handleAdvance(), 1000);
         }}
         onPlaying={() => {
           // Cancelar timeout cuando empieza a sonar
@@ -637,11 +647,11 @@ function App() {
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Anuncios</span>
-                    <span className="text-white/50 font-mono">{adScheduler.getAllAdvertisers().length} negocios de Utrera</span>
+                    <span className="text-white/50 font-mono">{adScheduler.getAllAdvertisers().length} negocios de Utrera · {store.adPlayCount} cuñas</span>
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Intervalo</span>
-                    <span className="text-white/50 font-mono">10 s de música · 1 cuña de 10 s</span>
+                    <span className="text-white/50 font-mono">cada 10 s · cuña única de 10 s</span>
                   </div>
                 </div>
               </div>

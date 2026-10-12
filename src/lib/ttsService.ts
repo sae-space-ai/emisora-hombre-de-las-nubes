@@ -107,8 +107,8 @@ export async function unlockTTS(): Promise<boolean> {
       resolve(false);
     };
 
-    // Hablar (aunque sea silencio)
-    window.speechSynthesis.speak(utterance);
+    try { window.speechSynthesis.speak(utterance); }
+    catch { ttsUnlocked = true; resolve(false); }
 
     // Timeout de seguridad
     setTimeout(() => {
@@ -177,16 +177,13 @@ export function speakAd(
     onError?.(event.error);
   };
 
-  // Pequeño delay antes de hablar (ayuda en algunos navegadores)
-  setTimeout(() => {
-    try {
-      window.speechSynthesis.speak(utterance);
-      console.log('[TTS] 🗣️ speak() llamado');
-    } catch (error) {
-      console.error('[TTS] ❌ Error llamando a speak():', error);
-      onError?.('Error llamando a speak()');
-    }
-  }, 50);
+  // La voz debe comenzar inmediatamente, sin temporizadores encadenados.
+  try {
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.error('[TTS] Error llamando a speak():', error);
+    onError?.('No pudo iniciar la voz de la cuña');
+  }
 }
 
 /**
