@@ -8,8 +8,8 @@ import advertisersData from '../data/advertisers.json';
 // Configuración hardcoded (antes venía de adConfig.json)
 const AD_CONFIG = {
   adIntervalSeconds: 10,
-  adMinDurationSeconds: 10,
-  adMaxDurationSeconds: 30,
+  adMinDurationSeconds: 15,
+  adMaxDurationSeconds: 60,
   enableDucking: true,
   duckingLevel: 0.2,
   duckingFadeSeconds: 0.5,

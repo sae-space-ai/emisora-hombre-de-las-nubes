@@ -26,7 +26,7 @@ import {
 import { initTTS, speak, speakStationID, stopSpeaking, isTTSAvailable } from './lib/tts';
 import { initTTSSystem, unlockTTS, speakAd, stopTTS } from './lib/ttsService';
 import { adScheduler } from './lib/adScheduler';
-import { AD_INTERVAL_SECONDS, AD_SPOT_DURATION_MS, nextAdMark, isAdDue } from './lib/adTiming';
+import { AD_INTERVAL_SECONDS, AD_SPOT_DURATION_MS, AD_SPOT_WATCHDOG_MS, nextAdMark, isAdDue } from './lib/adTiming';
 import { useRadioStore } from './store/useRadioStore';
 import { logSystem, logTrack, logTTS, logError, logQueue } from './lib/logger';
 import { saveCatalog, loadCatalog, saveRadioState, loadRadioState } from './lib/persistence';
@@ -81,6 +81,7 @@ function App() {
   const previousTrackRef = useRef<string | null>(null);
   const adActiveRef = useRef(false);
   const adTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const adGenerationRef = useRef(0);
 
   useEffect(() => { ttsEnabledRef.current = ttsEnabled; }, [ttsEnabled]);
@@ -222,7 +223,9 @@ function App() {
       ++adGenerationRef.current;
       adActiveRef.current = false;
       if (adTimerRef.current) clearTimeout(adTimerRef.current);
+      if (adWatchdogRef.current) clearTimeout(adWatchdogRef.current);
       adTimerRef.current = null;
+      adWatchdogRef.current = null;
       stopTTS();
       stateBeforeAdvance.setCurrentAd(null);
       stateBeforeAdvance.setIsPlayingAd(false);
@@ -325,10 +328,10 @@ function App() {
     const finish = () => {
       if (!adActiveRef.current || adGenerationRef.current !== generation) return;
       adActiveRef.current = false;
-      if (adTimerRef.current) {
-        clearTimeout(adTimerRef.current);
-        adTimerRef.current = null;
-      }
+      if (adTimerRef.current) clearTimeout(adTimerRef.current);
+      if (adWatchdogRef.current) clearTimeout(adWatchdogRef.current);
+      adTimerRef.current = null;
+      adWatchdogRef.current = null;
       const latest = useRadioStore.getState();
       latest.setIsPlayingAd(false);
       latest.setCurrentAd(null);
@@ -344,20 +347,37 @@ function App() {
       }
     };
 
-    // Un hueco publicitario dura diez segundos como máximo; si la voz acaba
-    // antes, se mantiene el hueco y NO comienza otra cuña.
+    // La cuña debe durar AL MENOS 15 segundos. La canción solo se reanuda
+    // cuando han transcurrido 15 segundos Y la voz ha terminado realmente.
+    // Un watchdog independiente protege ante motores TTS que no emiten onend.
+    let minimumReached = false;
+    let voiceFinished = false;
+    const finishIfReady = () => {
+      if (minimumReached && voiceFinished) finish();
+    };
     adTimerRef.current = setTimeout(() => {
-      stopTTS();
-      finish();
+      minimumReached = true;
+      finishIfReady();
     }, AD_SPOT_DURATION_MS);
+    adWatchdogRef.current = setTimeout(() => {
+      if (!adActiveRef.current || adGenerationRef.current !== generation) return;
+      logError('El motor de voz no completó la cuña dentro del máximo de seguridad');
+      stopTTS();
+      minimumReached = true;
+      voiceFinished = true;
+      finish();
+    }, AD_SPOT_WATCHDOG_MS);
 
     speakAd(
       advertiser.adScript,
-      () => { /* Voz terminada: esperar al final del hueco de 10 segundos */ },
+      () => {
+        voiceFinished = true;
+        finishIfReady();
+      },
       (error) => {
-        logError('Fallo en la locución comercial: ' + error);
-        stopTTS();
-        finish(); // Sin voz disponible, no bloquear la música.
+        logError('Fallo en la locución informativa: ' + error);
+        voiceFinished = true;
+        finishIfReady(); // Nunca salta antes del mínimo de 15 segundos.
       }
     );
   };
@@ -434,6 +454,7 @@ function App() {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (adTimerRef.current) clearTimeout(adTimerRef.current);
+      if (adWatchdogRef.current) clearTimeout(adWatchdogRef.current);
       adActiveRef.current = false;
       stopSpeaking();
       stopTTS(); // Detener TTS de anuncios
@@ -647,7 +668,7 @@ function App() {
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Intervalo</span>
-                    <span className="text-white/50 font-mono">cada 10 s · cuña única de 10 s</span>
+                    <span className="text-white/50 font-mono">cada 10 s de canción · cuña ≥15 s</span>
                   </div>
                 </div>
               </div>

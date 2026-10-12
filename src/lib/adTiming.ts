@@ -3,7 +3,8 @@
  * nunca tiempo de pared o segundos transcurridos durante la cuña.
  */
 export const AD_INTERVAL_SECONDS = 10;
-export const AD_SPOT_DURATION_MS = 10_000;
+export const AD_SPOT_DURATION_MS = 15_000; // Mínimo garantizado del bloque publicitario
+export const AD_SPOT_WATCHDOG_MS = 60_000; // Solo para fallos del sintetizador
 
 export function nextAdMark(mediaSeconds: number): number {
   if (!Number.isFinite(mediaSeconds) || mediaSeconds < 0) return AD_INTERVAL_SECONDS;

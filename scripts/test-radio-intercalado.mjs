@@ -18,7 +18,9 @@ const runTs = (source, requireFn = () => { throw Error('Dependencia imprevista')
 };
 const { nextAdMark, isAdDue, AD_INTERVAL_SECONDS, AD_SPOT_DURATION_MS } = runTs(timing);
 assert.equal(AD_INTERVAL_SECONDS, 10);
-assert.equal(AD_SPOT_DURATION_MS, 10000);
+assert.equal(AD_SPOT_DURATION_MS, 15000);
+const timingSource = read('src/lib/adTiming.ts');
+assert.match(timingSource, /AD_SPOT_WATCHDOG_MS = 60_000/);
 for (const [time, next] of [[0,10],[9.99,10],[10,20],[10.2,20],[19.9,20],[20,30],[120.5,130]]) {
   assert.equal(nextAdMark(time), next, 'Umbral ' + time);
 }
@@ -30,8 +32,13 @@ assert.equal(isAdDue(10,10,true,true,true),false,'No solapar anuncios');
 assert.equal(isAdDue(10,10,true,false,false),false,'Respetar publicidad desactivada');
 assert.equal(isAdDue(Number.NaN,10,true,false,true),false);
 const advertisers = JSON.parse(read('src/data/advertisers.json')).filter(a=>a.enabled);
-assert.ok(advertisers.length >= 2);
-assert.ok(advertisers.every(a=>a.duration===10));
+assert.ok(advertisers.length >= 60, 'Catálogo ampliamente ampliado');
+assert.ok(advertisers.every(a=>a.duration>=15), 'Mínimo de 15 segundos');
+assert.ok(advertisers.every(a=>a.sourceUrl && a.sourceUrl.startsWith('https://')), 'Fuentes de los anunciantes');
+assert.ok(advertisers.every(a=>a.sponsored === false), 'No atribuir patrocinio');
+assert.ok(advertisers.every(a=>!a.adScript.toLowerCase().includes('negocio de utrera')), 'Frase prohibida');
+assert.ok(advertisers.every(a=>a.adScript.trim().split(/\s+/).length >= 43), 'Cuñas con contenido hablado suficiente');
+assert.equal(new Set(advertisers.map(a=>a.id)).size, advertisers.length, 'Nombres únicos');
 const schedulerSource = read('src/lib/adScheduler.ts');
 const { adScheduler } = runTs(schedulerSource, path => {
   assert.equal(path, '../data/advertisers.json');
@@ -50,4 +57,6 @@ assert.ok(appSource.includes('audio.src = updatedState.streamUrl'), 'Usar URL ac
 assert.ok(!appSource.includes('audio.src = store.streamUrl!'), 'No usar URL obsoleta');
 assert.ok(appSource.includes('onTimeUpdate={handleMusicTimeUpdate}'));
 assert.ok(!appSource.includes('await unlockTTS()'), 'No bloquear inicio por TTS');
-console.log('PASS: 10 s reales + un solo anuncio + rotación + URL actualizada + arranque sin bloqueo');
+assert.ok(appSource.includes('minimumReached && voiceFinished'), 'Esperar mínimo y final de voz');
+assert.ok(appSource.includes('AD_SPOT_WATCHDOG_MS'), 'Fail-safe de síntesis');
+console.log('PASS: música 10 s + cuña >= 15 s sin recortes + '+advertisers.length+' anunciantes + rotación');
