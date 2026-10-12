@@ -302,7 +302,7 @@ function App() {
   }, [currentTrack, isTTSPlaying, tracksPlayedCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ========================================================================
-  // UN SOLO ANUNCIO CADA 10 SEGUNDOS DE MÚSICA REAL: CUÑA DE 10 SEGUNDOS
+  // UNA CUÑA DE AL MENOS 15 SEGUNDOS CADA 10 SEGUNDOS DE MÚSICA REAL
   // ========================================================================
   const handleMusicTimeUpdate = () => {
     const audio = audioRef.current;
@@ -664,7 +664,7 @@ function App() {
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Anuncios</span>
-                    <span className="text-white/50 font-mono">{adScheduler.getAllAdvertisers().length} negocios de Utrera · {store.adPlayCount} cuñas</span>
+                    <span className="text-white/50 font-mono">{adScheduler.getAllAdvertisers().length} establecimientos · {store.adPlayCount} cuñas</span>
                   </div>
                   <div className="flex justify-between text-[10px]">
                     <span className="text-white/30">Intervalo</span>

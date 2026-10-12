@@ -34,6 +34,8 @@ export interface Advertiser {
   duration: number;
   enabled: boolean;
   sponsored?: boolean;
+  slogan?: string; // Propuesta creativa original, no eslogan oficial de la empresa
+  sourceUrl?: string;
 }
 
 class AdScheduler {
